@@ -1,31 +1,36 @@
 {
-  "name": "@mcpware/claude-memory-manager",
+  "name": "@mcpware/claude-code-organizer",
   "version": "0.1.0",
-  "description": "Manage all your Claude Code memories, skills, MCP servers, and hooks — organized by scope, movable via drag-and-drop",
+  "description": "Organize all your Claude Code memories, skills, MCP servers, and hooks — view by scope hierarchy, move between scopes via drag-and-drop",
   "type": "module",
   "bin": {
-    "claude-memory-manager": "./bin/cli.mjs"
+    "claude-code-organizer": "./bin/cli.mjs"
   },
   "scripts": {
     "start": "node bin/cli.mjs"
   },
   "keywords": [
     "claude-code",
+    "organizer",
     "claude-memory",
-    "memory-manager",
     "claude-skills",
     "mcp-servers",
+    "claude-config",
     "scope-manager",
-    "config-manager",
-    "claude-code-plugin",
+    "memory-manager",
+    "skill-manager",
     "drag-and-drop",
-    "claude-admin"
+    "claude-code-plugin",
+    "claude-admin",
+    "claude-settings",
+    "claude-hooks",
+    "config-manager"
   ],
   "author": "ithiria894",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mcpware/claude-memory-manager"
+    "url": "https://github.com/mcpware/claude-code-organizer"
   },
   "engines": {
     "node": ">=20"
