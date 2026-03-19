@@ -338,9 +338,16 @@ async function scanMcpServers(scope) {
   let mcpPaths = [];
 
   if (scope.id === "global") {
+    // All global MCP sources — show ALL entries so user can manage duplicates:
+    // 1. ~/.claude/.mcp.json (user scope — `claude mcp add -s user`)
+    // 2. ~/.mcp.json (alternate user location)
+    // 3. Enterprise managed: /etc/claude-code/managed-mcp.json
+    // 4. mcpServers inside settings.json / settings.local.json
     mcpPaths.push({ path: join(CLAUDE_DIR, ".mcp.json"), label: "global" });
+    mcpPaths.push({ path: join(HOME, ".mcp.json"), label: "global" });
+    mcpPaths.push({ path: "/etc/claude-code/managed-mcp.json", label: "managed" });
   } else if (scope.repoDir) {
-    // Check both repo/.mcp.json and parent workspace .mcp.json
+    // Project-scope MCP: repo/.mcp.json
     const repoMcp = join(scope.repoDir, ".mcp.json");
     if (await exists(repoMcp)) {
       mcpPaths.push({ path: repoMcp, label: scope.type });
@@ -369,6 +376,40 @@ async function scanMcpServers(scope) {
           sizeBytes: 0,
           mtime: "",
           path: mcpPath,
+          mcpConfig: serverConfig,
+        });
+      }
+    } catch {}
+  }
+
+  // Also scan mcpServers embedded inside settings files
+  const settingsFiles = scope.id === "global"
+    ? [join(CLAUDE_DIR, "settings.json"), join(CLAUDE_DIR, "settings.local.json")]
+    : scope.repoDir
+      ? [join(scope.repoDir, ".claude", "settings.json"), join(scope.repoDir, ".claude", "settings.local.json")]
+      : [];
+
+  for (const sPath of settingsFiles) {
+    const content = await safeReadFile(sPath);
+    if (!content) continue;
+    try {
+      const settings = JSON.parse(content);
+      const servers = settings.mcpServers || {};
+      for (const [name, serverConfig] of Object.entries(servers)) {
+        const cmd = serverConfig.command || "";
+        const args = serverConfig.args || [];
+        const desc = [cmd, ...args].filter(Boolean).join(" ").slice(0, 100);
+        items.push({
+          category: "mcp",
+          scopeId: scope.id,
+          name,
+          fileName: basename(sPath),
+          description: desc,
+          subType: "mcp",
+          size: "",
+          sizeBytes: 0,
+          mtime: "",
+          path: sPath,
           mcpConfig: serverConfig,
         });
       }
