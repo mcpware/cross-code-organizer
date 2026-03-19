@@ -52,8 +52,11 @@ body {
 .logo { width:32px; height:32px; background:var(--accent); border-radius:8px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:16px; font-weight:700; flex-shrink:0; }
 .page-hdr h1 { font-size:1.25rem; color:var(--text-primary); font-weight:700; letter-spacing:-0.4px; }
 .spacer { flex:1; }
-.expand-toggle { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:6px 12px; color:var(--text-secondary); font-size:0.68rem; cursor:pointer; font-family:inherit; font-weight:500; transition:all 0.15s; white-space:nowrap; flex-shrink:0; }
+.hdr-actions { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.expand-toggle { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:7px 12px; color:var(--text-secondary); font-size:0.72rem; cursor:pointer; font-family:inherit; font-weight:500; transition:all 0.15s; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; }
 .expand-toggle:hover { background:var(--hover); border-color:var(--scope-border); }
+.toggle-icon { display:inline-block; width:0; height:0; border-top:4px solid transparent; border-bottom:4px solid transparent; border-left:6px solid var(--text-muted); transition:transform 0.15s; }
+.toggle-icon.expanded { transform:rotate(90deg); }
 .search { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:7px 14px; color:var(--text-primary); font-size:0.78rem; width:200px; font-family:inherit; outline:none; transition:all 0.15s; }
 .search:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-light); }
 .search::placeholder { color:var(--text-faint); }

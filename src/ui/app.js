@@ -609,18 +609,17 @@ function setupExpandToggle() {
   const btn = document.getElementById("expandToggle");
   btn.addEventListener("click", () => {
     allExpanded = !allExpanded;
-    btn.textContent = allExpanded ? "▼ Collapse all" : "▶ Expand all";
+    btn.innerHTML = allExpanded
+      ? '<span class="toggle-icon expanded"></span> Collapse all'
+      : '<span class="toggle-icon"></span> Expand all';
 
+    // Scopes always stay open — only categories toggle
+    // Expand all = categories open; Collapse all = categories closed (default)
     document.querySelectorAll(".scope-hdr").forEach(hdr => {
       const body = hdr.nextElementSibling;
       const tog = hdr.querySelector(".scope-tog");
-      if (allExpanded) {
-        body?.classList.remove("c");
-        tog?.classList.remove("c");
-      } else {
-        body?.classList.add("c");
-        tog?.classList.add("c");
-      }
+      body?.classList.remove("c");
+      tog?.classList.remove("c");
     });
 
     document.querySelectorAll(".cat-hdr").forEach(hdr => {
@@ -642,9 +641,40 @@ function setupExpandToggle() {
 function setupSearch() {
   document.getElementById("searchInput").addEventListener("input", function () {
     const q = this.value.toLowerCase();
+
+    // 1. Show/hide individual item rows
     document.querySelectorAll(".item-row").forEach(row => {
       const text = row.textContent.toLowerCase();
       row.style.display = (!q || text.includes(q)) ? "" : "none";
+    });
+
+    // 2. Hide category sections where all items are hidden
+    document.querySelectorAll(".cat-hdr").forEach(catHdr => {
+      const catBody = catHdr.nextElementSibling;
+      if (!catBody) return;
+      const rows = catBody.querySelectorAll(".item-row");
+      const anyVisible = rows.length === 0 || [...rows].some(r => r.style.display !== "none");
+      catHdr.style.display = anyVisible ? "" : "none";
+      catBody.style.display = anyVisible ? "" : "none";
+    });
+
+    // 3. Hide scope blocks bottom-up (deepest first so parents see child visibility)
+    const allBlocks = [...document.querySelectorAll(".scope-block")];
+    allBlocks.reverse().forEach(block => {
+      const hdr = block.querySelector(":scope > .scope-hdr");
+      const body = block.querySelector(":scope > .scope-body");
+      if (!hdr || !body) return;
+
+      // Check if any direct category content is visible
+      const catHdrs = body.querySelectorAll(":scope > .cat-hdr");
+      const anyCatVisible = [...catHdrs].some(ch => ch.style.display !== "none");
+
+      // Check if any child scope-block is visible
+      const childScopes = body.querySelectorAll(":scope > .child-scopes > .scope-block");
+      const anyChildVisible = [...childScopes].some(cb => cb.style.display !== "none");
+
+      const visible = !q || anyCatVisible || anyChildVisible;
+      block.style.display = visible ? "" : "none";
     });
   });
 }
