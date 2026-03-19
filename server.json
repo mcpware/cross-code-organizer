@@ -6,12 +6,12 @@
     "url": "https://github.com/mcpware/claude-code-organizer",
     "source": "github"
   },
-  "version": "0.2.1",
+  "version": "0.2.2",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@mcpware/claude-code-organizer",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "transport": {
         "type": "stdio"
       }
