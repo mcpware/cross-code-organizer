@@ -33,7 +33,22 @@ jobs:
       - name: Build (if applicable)
         run: npm run build --if-present
 
+      - name: Check if version already published
+        id: check
+        run: |
+          PKG_NAME=$(node -p "require('./package.json').name")
+          PKG_VER=$(node -p "require('./package.json').version")
+          PUBLISHED=$(npm view "$PKG_NAME@$PKG_VER" version 2>/dev/null || echo "")
+          if [ "$PUBLISHED" = "$PKG_VER" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: Publish to npm
+        if: steps.check.outputs.skip != 'true'
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
