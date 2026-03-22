@@ -1,7 +1,7 @@
-FROM node:20-slim
+FROM node:22-slim
 WORKDIR /app
 COPY package.json ./
+RUN npm install --omit=dev 2>/dev/null || true
 COPY bin/ ./bin/
 COPY src/ ./src/
-EXPOSE 3847
-CMD ["node", "bin/cli.mjs"]
+CMD ["node", "bin/cli.mjs", "--mcp"]
