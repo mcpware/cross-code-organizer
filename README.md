@@ -143,7 +143,7 @@ We looked at every Claude Code config tool we could find. None offered visual sc
 | Platform | Status |
 |----------|:------:|
 | Ubuntu / Linux | Supported |
-| macOS | Should work (untested) |
+| macOS (Intel + Apple Silicon) | Supported (community-tested on Sequoia M3) |
 | Windows | Not yet |
 | WSL | Should work (untested) |
 

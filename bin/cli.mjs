@@ -8,6 +8,25 @@
  *   node bin/cli.mjs --port 3847  → Start web dashboard on custom port
  */
 
+import { access, constants } from 'node:fs/promises';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
+
+// ── Pre-flight check: verify ~/.claude/ exists and is readable ──
+const claudeDir = join(homedir(), '.claude');
+try {
+  await access(claudeDir, constants.R_OK);
+} catch {
+  console.error(`\n  ✗ Cannot read ${claudeDir}\n`);
+  console.error(`  Claude Code stores its config in ~/.claude/ but this directory`);
+  console.error(`  either doesn't exist or isn't readable by your current user.\n`);
+  console.error(`  To fix:`);
+  console.error(`    1. Make sure Claude Code has been run at least once`);
+  console.error(`    2. Check permissions: ls -la ~/.claude/`);
+  console.error(`    3. If needed:  chmod u+r ~/.claude\n`);
+  process.exit(1);
+}
+
 const args = process.argv.slice(2);
 
 if (args.includes('--mcp')) {
