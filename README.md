@@ -45,6 +45,24 @@ Claude auto-creates memories from things you said casually, or things it *though
 
 ---
 
+## Comparison
+
+We analyzed the source code of every Claude Code tool we could find — analytics dashboards (9K+ stars), desktop apps (600+ stars), VS Code extensions, TUI session managers, terminal statuslines. None offered true scope hierarchy + drag-and-drop cross-scope moves in a standalone dashboard.
+
+| Feature | **Claude Code Organizer** | Desktop app (600+⭐) | VS Code extension | Analytics dashboards | TUI tools |
+|---------|:---:|:---:|:---:|:---:|:---:|
+| True scope hierarchy (Global > Workspace > Project) | **Yes** | No | Partial (no workspace) | No | No |
+| Drag-and-drop moves | **Yes** | No | No | No | No |
+| Cross-scope moves | **Yes** | No | One-click | No | No |
+| Undo on every action | **Yes** | No | No | No | No |
+| Bulk operations | **Yes** | No | No | No | No |
+| Real MCP server management | **Yes** | Global only | Stub (icon only) | No | No |
+| Session management | **Yes** | No | No | Yes | Yes |
+| Search & filter | **Yes** | No | Yes | Yes | No |
+| MCP tools (AI-accessible) | **Yes** | No | No | No | No |
+| Zero dependencies | **Yes** | No (Tauri+React) | No (VS Code) | No (Next.js/FastAPI) | No (Python) |
+| Standalone (no IDE) | **Yes** | Yes | No | Yes | Yes |
+
 ## Features
 
 - **Scope-aware hierarchy** — See all items organized as Global > Workspace > Project, with inheritance indicators
@@ -131,24 +149,6 @@ Child scopes inherit parent scope's memories, skills, and MCP servers.
 3. **Renders dashboard** — three-panel layout: sidebar scope tree, category-grouped items, detail panel with content preview
 4. **Handles moves** — drag or click "Move to...", moves files on disk with safety checks, undo support
 5. **Handles deletes** — delete with undo, bulk delete, session cleanup
-
-## Comparison
-
-We analyzed the source code of every Claude Code tool we could find — analytics dashboards (9K+ stars), desktop apps (600+ stars), VS Code extensions, TUI session managers, terminal statuslines. None offered true scope hierarchy + drag-and-drop cross-scope moves in a standalone dashboard.
-
-| Feature | **Claude Code Organizer** | Desktop app (600+⭐) | VS Code extension | Analytics dashboards | TUI tools |
-|---------|:---:|:---:|:---:|:---:|:---:|
-| True scope hierarchy (Global > Workspace > Project) | **Yes** | No | Partial (no workspace) | No | No |
-| Drag-and-drop moves | **Yes** | No | No | No | No |
-| Cross-scope moves | **Yes** | No | One-click | No | No |
-| Undo on every action | **Yes** | No | No | No | No |
-| Bulk operations | **Yes** | No | No | No | No |
-| Real MCP server management | **Yes** | Global only | Stub (icon only) | No | No |
-| Session management | **Yes** | No | No | Yes | Yes |
-| Search & filter | **Yes** | No | Yes | Yes | No |
-| MCP tools (AI-accessible) | **Yes** | No | No | No | No |
-| Zero dependencies | **Yes** | No (Tauri+React) | No (VS Code) | No (Next.js/FastAPI) | No (Python) |
-| Standalone (no IDE) | **Yes** | Yes | No | Yes | Yes |
 
 ## Platform Support
 
