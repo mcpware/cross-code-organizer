@@ -95,14 +95,14 @@ Opens a dashboard at `http://localhost:3847`. Works with your real `~/.claude/` 
 
 ## What It Manages
 
-| Type | View | Move | Per-Project | Why locked? |
-|------|:----:|:----:|:-----------:|-------------|
-| Memories (feedback, user, project, reference) | Yes | Yes | Yes | — |
-| Skills | Yes | Yes | Yes | — |
-| MCP Servers | Yes | Yes | Yes | — |
-| Config (CLAUDE.md, settings.json) | Yes | Locked | Yes | System settings — move could break config |
-| Hooks | Yes | Locked | Yes | Depends on settings context — silent failures |
-| Plans | Yes | Locked | Yes | — |
+| Type | View | Move | Scanned at | Why locked? |
+|------|:----:|:----:|:----------:|-------------|
+| Memories (feedback, user, project, reference) | Yes | Yes | Global + Project | — |
+| Skills | Yes | Yes | Global + Project | — |
+| MCP Servers | Yes | Yes | Global + Project | — |
+| Config (CLAUDE.md, settings.json) | Yes | Locked | Global + Project | System settings — move could break config |
+| Hooks | Yes | Locked | Global + Project | Depends on settings context — silent failures if moved |
+| Plans | Yes | Locked | Global + Project | Ephemeral, session-specific |
 | Plugins | Yes | Locked | Global only | Claude Code managed cache |
 
 ## Scope Hierarchy
