@@ -928,6 +928,8 @@ async function loadPreview(item) {
       try {
         const res = await fetchJson(`/api/session-preview?path=${encodeURIComponent(item.path)}`);
         el.textContent = res.ok ? res.content : "Cannot load session preview";
+        // Scroll to bottom — user wants to see the most recent messages
+        requestAnimationFrame(() => el.scrollTop = el.scrollHeight);
       } catch {
         el.textContent = "Failed to load session preview";
       }
