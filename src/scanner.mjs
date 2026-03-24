@@ -340,6 +340,7 @@ async function scanMemories(scope) {
       size: s ? formatSize(s.size) : "0B",
       sizeBytes: s ? s.size : 0,
       mtime: s ? s.mtime.toISOString().slice(0, 10) : "",
+      ctime: s ? s.birthtime.toISOString().slice(0, 10) : "",
       path: fullPath,
     });
   }
@@ -425,6 +426,7 @@ async function scanSkills(scope) {
         sizeBytes: totalSize,
         fileCount,
         mtime: s ? s.mtime.toISOString().slice(0, 10) : "",
+        ctime: s ? s.birthtime.toISOString().slice(0, 10) : "",
         path: skillDir,
         bundle: bundleInfo?.source || null,
       });
@@ -476,6 +478,7 @@ async function scanMcpServers(scope) {
           size: "",
           sizeBytes: 0,
           mtime: "",
+          ctime: "",
           path: mcpPath,
           mcpConfig: serverConfig,
         });
@@ -510,6 +513,7 @@ async function scanMcpServers(scope) {
           size: "",
           sizeBytes: 0,
           mtime: "",
+          ctime: "",
           path: sPath,
           mcpConfig: serverConfig,
         });
@@ -552,6 +556,7 @@ async function scanConfigs(scope) {
       size: s ? formatSize(s.size) : "0B",
       sizeBytes: s ? s.size : 0,
       mtime: s ? s.mtime.toISOString().slice(0, 10) : "",
+      ctime: s ? s.birthtime.toISOString().slice(0, 10) : "",
       path: cfg.path,
       locked: true,
     });
@@ -596,6 +601,7 @@ async function scanHooks(scope) {
               size: "",
               sizeBytes: 0,
               mtime: "",
+              ctime: "",
               path: source.path,
               locked: true,
             });
@@ -634,6 +640,7 @@ async function scanPlugins() {
           size: "",
           sizeBytes: 0,
           mtime: "",
+          ctime: "",
           path: join(cacheDir, org.name, plugin.name),
           locked: true,
         });
@@ -682,6 +689,7 @@ async function scanPlans(scope) {
       size: s ? formatSize(s.size) : "0B",
       sizeBytes: s ? s.size : 0,
       mtime: s ? s.mtime.toISOString().slice(0, 10) : "",
+      ctime: s ? s.birthtime.toISOString().slice(0, 10) : "",
       path: fullPath,
       // plans are standalone .md files, movable like memories
     });
@@ -737,6 +745,7 @@ async function scanSessions(scope) {
       size: s ? formatSize(s.size) : "0B",
       sizeBytes: s ? s.size : 0,
       mtime: s ? s.mtime.toISOString().slice(0, 10) : "",
+      ctime: s ? s.birthtime.toISOString().slice(0, 10) : "",
       path: fullPath,
       deletable: true, // sessions can be deleted but not moved
     });

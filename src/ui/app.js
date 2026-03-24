@@ -870,7 +870,10 @@ function showDetail(item, rowEl) {
   document.getElementById("detailScope").textContent = scope?.name || item.scopeId;
   document.getElementById("detailDesc").textContent = item.description || "—";
   document.getElementById("detailSize").textContent = item.size || "—";
-  document.getElementById("detailDate").textContent = item.mtime || "—";
+  const detailDate = item.ctime && item.mtime
+    ? `Created: ${item.ctime} | Modified: ${item.mtime}`
+    : (item.mtime || "—");
+  document.getElementById("detailDate").textContent = detailDate;
   document.getElementById("detailPath").textContent = item.path;
 
   // Show/hide move and delete buttons
