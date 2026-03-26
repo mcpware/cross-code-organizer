@@ -2311,10 +2311,12 @@ test.describe('Context Budget', () => {
     expect(budget.currentScope.items.length).toBeGreaterThan(0);
     expect(budget.currentScope.total).toBeGreaterThan(0);
     expect(budget.inherited.total).toBe(0); // global has no parents
-    expect(budget.systemOverhead.base).toBe(21000);
-    expect(budget.total).toBeGreaterThan(21000);
+    expect(budget.systemOverhead.base).toBe(12500);
+    expect(budget.total).toBeGreaterThan(12500);
     expect(budget.contextLimit).toBe(200000);
     expect(budget.percentUsed).toBeGreaterThan(0);
+    expect(budget.alwaysLoaded).toBeTruthy();
+    expect(budget.deferred).toBeTruthy();
     expect(['measured', 'estimated']).toContain(budget.method);
 
     env.cleanup();
@@ -2675,12 +2677,12 @@ test.describe('Context Budget Accuracy', () => {
     env.cleanup();
   });
 
-  test('percentUsed is correctly calculated', async () => {
+  test('percentUsed is correctly calculated from always loaded', async () => {
     const env = await createTestEnv();
     const budgetRes = await fetch(`${env.baseURL}/api/context-budget?scope=global`);
     const budget = await budgetRes.json();
 
-    const expectedPct = Math.round((budget.total / budget.contextLimit) * 1000) / 10;
+    const expectedPct = Math.round((budget.alwaysLoaded.total / budget.contextLimit) * 1000) / 10;
     expect(budget.percentUsed).toBe(expectedPct);
 
     env.cleanup();
@@ -2709,22 +2711,22 @@ test.describe('Context Budget Accuracy', () => {
     env.cleanup();
   });
 
-  test('system overhead is always 21K base', async () => {
+  test('system overhead base is 12.5K loaded', async () => {
     const env = await createTestEnv();
     const budgetRes = await fetch(`${env.baseURL}/api/context-budget?scope=global`);
     const budget = await budgetRes.json();
 
-    expect(budget.systemOverhead.base).toBe(21000);
+    expect(budget.systemOverhead.base).toBe(12500);
 
     env.cleanup();
   });
 
-  test('MCP overhead = server count × 1500', async () => {
+  test('MCP overhead = unique server count × 3100', async () => {
     const env = await createTestEnv();
     const budgetRes = await fetch(`${env.baseURL}/api/context-budget?scope=global`);
     const budget = await budgetRes.json();
 
-    expect(budget.systemOverhead.mcpEstimate).toBe(budget.systemOverhead.mcpServers * 1500);
+    expect(budget.deferred.mcpToolSchemas).toBe(budget.deferred.mcpUniqueCount * 3100);
 
     env.cleanup();
   });
