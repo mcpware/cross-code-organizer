@@ -8,7 +8,7 @@
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org)
 English | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [廣東話](README.zh-HK.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Español](README.es.md) | [Bahasa Indonesia](README.id.md) | [Italiano](README.it.md) | [Português](README.pt-BR.md) | [Türkçe](README.tr.md) | [Tiếng Việt](README.vi.md) | [ไทย](README.th.md)
 
-**Organize all your Claude Code memories, skills, MCP servers, commands, agents, rules, and hooks — view by scope hierarchy, move between scopes via drag-and-drop.**
+**Pre-session context governance for Claude Code. See what's loaded before you start, find duplicates across scopes, and clean up the config mess — before it eats your context window.**
 
 > **100+ stars in 5 days!** This project had [11 stars when I first posted it on Reddit 3 days ago](https://www.reddit.com/r/coolgithubprojects/comments/1s12n97/claude_code_organizer_dashboard_that_shows/). Real users tested it, gave feedback, and helped shape what it is today. First open source project — thank you to everyone who starred, tested, and reported issues. This is just the beginning.
 
@@ -55,15 +55,15 @@ The same happens with memories. Claude creates duplicates without asking — thr
 
 A Python pipeline skill sitting in global gets loaded into your React frontend session. Stale memories from two weeks ago contradict your current instructions. Every wrong-scope item wastes tokens **and** degrades accuracy.
 
-You have no way to see the full picture. No command shows all items across all scopes, all inheritance, all at once.
+Claude Code has `/context` to show your token usage inside a session — but by then you're already burning tokens, and it's read-only. There's no way to manage the mess from outside.
 
-### The fix: a visual dashboard
+### The fix: pre-session context governance
 
 ```bash
 npx @mcpware/claude-code-organizer
 ```
 
-One command. See everything Claude has stored — organized by scope hierarchy. **See your token budget before you start.** Drag items between scopes. Delete stale memories. Find duplicates. Take control of what actually influences Claude's behavior.
+One command. **Before you start a session**, see exactly what will be loaded, where each item comes from (which scope), and how much it costs. Preview any item's content. Drag items between scopes. Delete duplicates and stale configs. `/context` tells you "you're using 42% right now" — this tells you "here's exactly why, and here's how to fix it before you start."
 
 > **First run auto-installs a `/cco` skill** — after that, just type `/cco` in any Claude Code session to open the dashboard.
 
