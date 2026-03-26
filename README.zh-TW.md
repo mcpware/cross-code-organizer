@@ -26,13 +26,13 @@ Claude Code 啟動時會自動預載所有設定檔 — CLAUDE.md、記憶、ski
 
 這是一個用了兩週的真實 project：
 
-![Context Budget](docs/democontextbudged.png)
+![Context Budget](docs/CB.png)
 
-**70.9K tokens — 佔你 200K context window 的 35.4%，還沒輸入一個字就沒了。** 每個 session 光是這些 overhead 的成本：Opus $1.06 USD，Sonnet $0.21 USD。
+**69.2K tokens — 佔你 200K context window 的 34.6%，還沒輸入一個字就沒了。** 每個 session 光是這些 overhead 的成本：Opus $1.04 USD，Sonnet $0.21 USD。
 
-剩下的 64.5% 要跟你的對話、Claude 的回覆、tool results 共用空間。Context 越滿，Claude 越不準確 — 這就是所謂的 **context rot**。
+剩下的 65.4% 要跟你的對話、Claude 的回覆、tool results 共用空間。Context 越滿，Claude 越不準確 — 這就是所謂的 **context rot**。
 
-70.9K 怎麼來的？就是所有能離線測量的 config 檔案 token 加總，再加上估算的系統 overhead（~21K tokens）— system prompt、23+ 個內建 tool 定義、MCP tool schemas，每次 API call 都會載入。
+69.2K 怎麼來的？就是所有能離線測量的 config 檔案 token 加總，再加上估算的系統 overhead（~21K tokens）— system prompt、23+ 個內建 tool 定義、MCP tool schemas，每次 API call 都會載入。
 
 但這還只是**靜態**的部分。以下這些 **runtime injections** 完全沒有算進去：
 
@@ -41,11 +41,17 @@ Claude Code 啟動時會自動預載所有設定檔 — CLAUDE.md、記憶、ski
 - **System reminders** — malware 警告、token 提醒等隱藏 injections
 - **Conversation history** — 你的訊息、Claude 的回覆和所有 tool results 每次 API call 都會重新發送
 
-所以 session 進行到一半時，實際用量遠超 70.9K。你只是看不到。
+所以 session 進行到一半時，實際用量遠超 69.2K。你只是看不到。
 
 ### Config 散落在錯誤的 scope
 
 另一個問題：Claude Code 工作時會默默建立記憶、skills、MCP configs、commands 和 rules，然後丟進當前目錄對應的 scope。
+
+它還會在不同 scope 悄悄重複安裝 MCP server。你不仔細看根本不會發現：
+
+![重複的 MCP 伺服器](docs/reloaded%20mcp%20form%20diff%20scope.png)
+
+Teams 裝了兩次、Gmail 裝了三次、Playwright 裝了三次 — 每個副本每次 session 都在浪費 token。Scope 標籤（`Global` / `nicole`）清楚標示了每個重複項在哪裡，讓你決定要保留哪個、移除哪個。
 
 結果就是：
 - 你希望到處都生效的偏好，被困在某個 project 裡

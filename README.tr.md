@@ -23,13 +23,13 @@ Claude Code başlarken tüm config dosyalarını otomatik yüklüyor — CLAUDE.
 
 İki haftalık gerçek bir projeye bak:
 
-![Context Budget](docs/democontextbudged.png)
+![Context Budget](docs/CB.png)
 
-**70.9K token — 200K context window'unun %35.4'ü, tek karakter yazmadan uçmuş.** Bu overhead'in tahmini maliyeti: Opus $1.06 USD / Sonnet $0.21 USD (oturum başına).
+**69.2K token — 200K context window'unun %34.6'sı, tek karakter yazmadan uçmuş.** Bu overhead'in tahmini maliyeti: Opus $1.04 USD / Sonnet $0.21 USD (oturum başına).
 
-Kalan %64.5'i mesajların, Claude'un yanıtları ve tool results paylaşıyor. Context ne kadar dolarsa Claude o kadar yanlış yapıyor — buna **context rot** deniyor.
+Kalan %65.4'ü mesajların, Claude'un yanıtları ve tool results paylaşıyor. Context ne kadar dolarsa Claude o kadar yanlış yapıyor — buna **context rot** deniyor.
 
-70.9K'nın kaynağı: offline ölçülebilen tüm config dosyalarının token toplamı + tahmini sistem overhead'i (~21K token) — system prompt, 23+ yerleşik tool tanımı ve MCP tool schemas. Bunlar her API call'da yükleniyor.
+69.2K'nın kaynağı: offline ölçülebilen tüm config dosyalarının token toplamı + tahmini sistem overhead'i (~21K token) — system prompt, 23+ yerleşik tool tanımı ve MCP tool schemas. Bunlar her API call'da yükleniyor.
 
 Ama bu sadece **statik** kısım. Şu **runtime injections** dahil değil:
 
@@ -38,11 +38,17 @@ Ama bu sadece **statik** kısım. Şu **runtime injections** dahil değil:
 - **System reminders** — malware uyarıları, token hatırlatmaları ve diğer gizli injection'lar
 - **Conversation history** — mesajların, Claude'un yanıtları ve tüm tool sonuçları her API call'da tekrar gönderiliyor
 
-Oturum ortasındaki gerçek kullanımın 70.9K'dan çok daha yüksek. Sadece göremiyorsun.
+Oturum ortasındaki gerçek kullanımın 69.2K'dan çok daha yüksek. Sadece göremiyorsun.
 
 ### Config'lerin yanlış scope'ta
 
 Diğer sorun: Claude Code çalışırken sessizce memory, skill, MCP config, command ve rule oluşturuyor ve bunları o anki dizinine uyan scope'a atıyor.
+
+Bir de farklı scope'larda yapılandırdığın MCP server'ları sessizce tekrar yüklüyor. Bakana kadar fark etmiyorsun:
+
+![Tekrarlanan MCP Server'lar](docs/reloaded%20mcp%20form%20diff%20scope.png)
+
+Teams iki kez, Gmail üç kez, Playwright üç kez kurulmuş — her kopya her oturumda token yiyor. Scope etiketleri (`Global` / `nicole`) her tekrarın tam olarak nerede olduğunu gösteriyor; hangisini tutacağına, hangisini sileceğine sen karar verirsin.
 
 Sonuç:
 - Her yerde geçerli olması gereken bir tercih tek projede sıkışıyor

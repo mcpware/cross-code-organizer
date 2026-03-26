@@ -23,13 +23,13 @@ Claude Code precarica automaticamente tutti i file di configurazione all'avvio �
 
 Ecco un progetto reale dopo due settimane di utilizzo:
 
-![Context Budget](docs/democontextbudged.png)
+![Context Budget](docs/CB.png)
 
-**70.9K token — il 35.4% della tua context window da 200K, spariti prima che tu digiti un singolo carattere.** Costo stimato solo per questo overhead: Opus $1.06 USD / Sonnet $0.21 USD per sessione.
+**69.2K token — il 34.6% della tua context window da 200K, spariti prima che tu digiti un singolo carattere.** Costo stimato solo per questo overhead: Opus $1.04 USD / Sonnet $0.21 USD per sessione.
 
-Il restante 64.5% se lo contendono i tuoi messaggi, le risposte di Claude e i tool results. Più il contesto si riempie, meno preciso diventa Claude — il cosiddetto **context rot**.
+Il restante 65.4% se lo contendono i tuoi messaggi, le risposte di Claude e i tool results. Più il contesto si riempie, meno preciso diventa Claude — il cosiddetto **context rot**.
 
-Da dove vengono i 70.9K? Sono la somma dei token di tutti i file di config misurabili offline, più un overhead di sistema stimato (~21K tokens) — system prompt, 23+ definizioni di tool integrate e MCP tool schemas, caricati a ogni API call.
+Da dove vengono i 69.2K? Sono la somma dei token di tutti i file di config misurabili offline, più un overhead di sistema stimato (~21K tokens) — system prompt, 23+ definizioni di tool integrate e MCP tool schemas, caricati a ogni API call.
 
 Ma questa è solo la parte **statica**. Queste **runtime injections** non sono incluse:
 
@@ -38,11 +38,17 @@ Ma questa è solo la parte **statica**. Queste **runtime injections** non sono i
 - **System reminders** — avvisi malware, promemoria sui token e altre iniezioni nascoste
 - **Conversation history** — i tuoi messaggi, le risposte di Claude e tutti i tool results vengono rinviati a ogni API call
 
-L'utilizzo reale a metà sessione è molto superiore a 70.9K. Semplicemente non lo vedi.
+L'utilizzo reale a metà sessione è molto superiore a 69.2K. Semplicemente non lo vedi.
 
 ### Le configurazioni finiscono nello scope sbagliato
 
 L'altro problema: Claude Code crea silenziosamente memory, skill, MCP config, commands e rules mentre lavori, e li butta nello scope che corrisponde alla directory corrente.
+
+Inoltre, reinstalla silenziosamente i server MCP quando li configuri in scope diversi. Non te ne accorgi finché non controlli:
+
+![Server MCP duplicati](docs/reloaded%20mcp%20form%20diff%20scope.png)
+
+Teams installato due volte, Gmail tre volte, Playwright tre volte — ogni copia spreca token a ogni sessione. Le etichette di scope (`Global` / `nicole`) mostrano esattamente dove si trova ogni duplicato, così puoi decidere quale tenere e quale eliminare.
 
 Il risultato:
 - Una preferenza che volevi globale resta bloccata in un singolo progetto

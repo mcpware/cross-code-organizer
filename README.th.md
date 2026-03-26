@@ -23,13 +23,13 @@ Claude Code โหลด config ทั้งหมดอัตโนมัติ
 
 นี่คือ project จริงหลังใช้งานสองสัปดาห์:
 
-![Context Budget](docs/democontextbudged.png)
+![Context Budget](docs/CB.png)
 
-**70.9K tokens — 35.4% ของ context window 200K หายไปก่อนพิมพ์แม้แต่ตัวเดียว** ค่าใช้จ่ายโดยประมาณของ overhead นี้: Opus $1.06 USD / Sonnet $0.21 USD ต่อ session
+**69.2K tokens — 34.6% ของ context window 200K หายไปก่อนพิมพ์แม้แต่ตัวเดียว** ค่าใช้จ่ายโดยประมาณของ overhead นี้: Opus $1.04 USD / Sonnet $0.21 USD ต่อ session
 
-64.5% ที่เหลือต้องแบ่งกันระหว่างข้อความ, คำตอบของ Claude และ tool results ยิ่ง context เต็มเท่าไหร่ Claude ก็ยิ่งไม่แม่นยำ เรียกว่า **context rot**
+65.4% ที่เหลือต้องแบ่งกันระหว่างข้อความ, คำตอบของ Claude และ tool results ยิ่ง context เต็มเท่าไหร่ Claude ก็ยิ่งไม่แม่นยำ เรียกว่า **context rot**
 
-70.9K มาจากไหน? คือผลรวม token ของ config files ทั้งหมดที่วัดแบบ offline ได้ บวกกับ system overhead โดยประมาณ (~21K tokens) — system prompt, 23+ tool definitions ในตัว และ MCP tool schemas ที่โหลดทุก API call
+69.2K มาจากไหน? คือผลรวม token ของ config files ทั้งหมดที่วัดแบบ offline ได้ บวกกับ system overhead โดยประมาณ (~21K tokens) — system prompt, 23+ tool definitions ในตัว และ MCP tool schemas ที่โหลดทุก API call
 
 แต่นี่เป็นแค่ส่วน**คงที่** **Runtime injections** ต่อไปนี้ยังไม่ได้นับรวม:
 
@@ -38,11 +38,17 @@ Claude Code โหลด config ทั้งหมดอัตโนมัติ
 - **System reminders** — คำเตือน malware, token reminders และ injections ซ่อนอื่น ๆ
 - **Conversation history** — ข้อความ, คำตอบของ Claude และ tool results ทั้งหมดถูกส่งซ้ำทุก API call
 
-การใช้จริงระหว่าง session สูงกว่า 70.9K มาก แค่มองไม่เห็น
+การใช้จริงระหว่าง session สูงกว่า 69.2K มาก แค่มองไม่เห็น
 
 ### Config อยู่ผิด scope
 
 อีกปัญหาหนึ่ง: Claude Code สร้าง memories, skills, MCP configs, commands และ rules เงียบ ๆ ทุกครั้งที่ทำงาน แล้วโยนลง scope ที่ตรงกับ directory ปัจจุบัน
+
+นอกจากนี้ยังแอบติดตั้ง MCP server ซ้ำเมื่อคุณตั้งค่าใน scope ต่าง ๆ โดยคุณจะไม่รู้ตัวจนกว่าจะเปิดดู:
+
+![MCP Server ซ้ำซ้อน](docs/reloaded%20mcp%20form%20diff%20scope.png)
+
+Teams ติดตั้งสองครั้ง, Gmail สามครั้ง, Playwright สามครั้ง — แต่ละสำเนากินเปลือง token ทุก session ป้าย scope (`Global` / `nicole`) บอกชัดเจนว่าแต่ละตัวที่ซ้ำอยู่ที่ไหน เพื่อให้คุณตัดสินใจว่าจะเก็บตัวไหนและลบตัวไหน
 
 ผลลัพธ์:
 - สิ่งที่อยากให้มีผลทุกที่ กลับติดอยู่ใน project เดียว

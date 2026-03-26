@@ -24,30 +24,36 @@ Two things happen silently every time you use Claude Code — and neither one is
 
 This is a real project directory after two weeks of use:
 
-![Context Budget](docs/democontextbudged.png)
+![Context Budget](docs/CB.png)
 
-**If you start a Claude Code session under this directory, 70.9K tokens are already loaded before you start any conversation.** That's 35.4% of your 200K context window — gone before you type a single character. Estimated cost just for this overhead: $1.06 USD per session on Opus, $0.21 on Sonnet.
+**If you start a Claude Code session under this directory, 69.2K tokens are already loaded before you start any conversation.** That's 34.6% of your 200K context window — gone before you type a single character. Estimated cost just for this overhead: $1.04 USD per session on Opus, $0.21 on Sonnet.
 
-The remaining 64.5% is shared between your messages, Claude's responses, and tool results before context compression kicks in. The fuller the context, the less accurate Claude becomes — an effect known as **context rot**.
+The remaining 65.4% is shared between your messages, Claude's responses, and tool results before context compression kicks in. The fuller the context, the less accurate Claude becomes — an effect known as **context rot**.
 
-Where does 70.9K come from? It includes everything we can **measure offline** — your CLAUDE.md, memories, skills, MCP server definitions, settings, hooks, rules, commands, and agents — tokenized per-item. Plus an **estimated system overhead** (~21K tokens) for the immutable scaffold Claude Code loads on every API call: the system prompt, 23+ built-in tool definitions, and MCP tool schemas.
+Where does 69.2K come from? It includes everything we can **measure offline** — your CLAUDE.md, memories, skills, MCP server definitions, settings, hooks, rules, commands, and agents — tokenized per-item. Plus an **estimated system overhead** (~21K tokens) for the immutable scaffold Claude Code loads on every API call: the system prompt, 23+ built-in tool definitions, and MCP tool schemas.
 
 And that's just what we can count. It does **not** include **runtime injections** — tokens Claude Code silently adds during a session:
 
 - **Rule re-injection** — all your rule files are re-injected into context after every tool call. After ~30 tool calls, this alone can consume ~46% of your context window
-- **File change diffs** — when a file you've read or written is modified externally (e.g. by a linter), the full diff is injected as a hidden system-reminder
+- **File change diffs** — when a file you've read or written are modified externally (e.g. by a linter), the full diff is injected as a hidden system-reminder
 - **System reminders** — malware warnings, token nudges, and other hidden injections appended to messages
 - **Conversation history** — your messages, Claude's responses, and all tool results are resent on every API call
 
-Your actual mid-session usage is significantly higher than 70.9K. You just can't see it.
+Your actual mid-session usage is significantly higher than 69.2K. You just can't see it.
 
 ### Problem 2: Your context is contaminated
 
 Claude Code silently creates memories, skills, MCP configs, commands, agents, and rules every time you work — and dumps them into whatever scope matches your current directory. A preference you wanted everywhere? Trapped in one project. A deploy skill that belongs to one repo? Leaked into global, contaminating every other project.
 
-It also creates duplicate memories without asking. In the screenshot above, you can see three separate memories about Slack updates — "Keep structure in Slack messages", "Slack updates don't always need a specific recipient", and "Always use slack-update skill for reports" — all saying essentially the same thing, each one wasting tokens every session.
+It also silently re-installs MCP servers when you configure them in different scopes. You don't notice until you look:
 
-A Python pipeline skill sitting in global gets loaded into your React frontend session. Duplicate MCP entries initialize the same server twice. Stale memories from two weeks ago contradict your current instructions. Every wrong-scope item wastes tokens **and** degrades accuracy.
+![Duplicate MCP Servers](docs/reloaded%20mcp%20form%20diff%20scope.png)
+
+Teams installed twice, Gmail three times, Playwright three times — each copy wasting tokens every session. The scope labels (`Global` / `nicole`) show exactly where each duplicate lives, so you can decide which to keep and which to remove.
+
+The same happens with memories. Claude creates duplicates without asking — three separate memories about Slack updates, all saying essentially the same thing, each one loaded into every session.
+
+A Python pipeline skill sitting in global gets loaded into your React frontend session. Stale memories from two weeks ago contradict your current instructions. Every wrong-scope item wastes tokens **and** degrades accuracy.
 
 You have no way to see the full picture. No command shows all items across all scopes, all inheritance, all at once.
 

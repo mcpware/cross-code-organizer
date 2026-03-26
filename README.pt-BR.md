@@ -23,13 +23,13 @@ O Claude Code carrega automaticamente todos os arquivos de configuração na ini
 
 Olha um projeto real depois de duas semanas de uso:
 
-![Context Budget](docs/democontextbudged.png)
+![Context Budget](docs/CB.png)
 
-**70.9K tokens — 35.4% da sua context window de 200K, sumiu antes de você digitar um caractere.** Custo estimado só desse overhead: Opus $1.06 USD / Sonnet $0.21 USD por sessão.
+**69.2K tokens — 34.6% da sua context window de 200K, sumiu antes de você digitar um caractere.** Custo estimado só desse overhead: Opus $1.04 USD / Sonnet $0.21 USD por sessão.
 
-Os 64.5% restantes são disputados pelas suas mensagens, as respostas do Claude e os tool results. Quanto mais cheio o contexto, menos preciso o Claude fica — o chamado **context rot**.
+Os 65.4% restantes são disputados pelas suas mensagens, as respostas do Claude e os tool results. Quanto mais cheio o contexto, menos preciso o Claude fica — o chamado **context rot**.
 
-De onde vêm os 70.9K? É a soma dos tokens de todos os arquivos de config mensuráveis offline, mais um overhead de sistema estimado (~21K tokens) — system prompt, 23+ definições de tools embutidas e MCP tool schemas, carregados em toda API call.
+De onde vêm os 69.2K? É a soma dos tokens de todos os arquivos de config mensuráveis offline, mais um overhead de sistema estimado (~21K tokens) — system prompt, 23+ definições de tools embutidas e MCP tool schemas, carregados em toda API call.
 
 Mas isso é só a parte **estática**. Estas **runtime injections** não estão incluídas:
 
@@ -38,11 +38,17 @@ Mas isso é só a parte **estática**. Estas **runtime injections** não estão 
 - **System reminders** — avisos de malware, lembretes de tokens e outras injeções ocultas
 - **Conversation history** — suas mensagens, as respostas do Claude e todos os tool results são reenviados em cada API call
 
-Seu uso real no meio da sessão é muito maior que 70.9K. Você só não vê.
+Seu uso real no meio da sessão é muito maior que 69.2K. Você só não vê.
 
 ### Suas configs estão no scope errado
 
 O outro problema: o Claude Code cria silenciosamente memories, skills, MCP configs, commands e rules enquanto você trabalha, e joga tudo no scope correspondente ao diretório atual.
+
+Ele também reinstala servidores MCP silenciosamente quando você os configura em scopes diferentes. Você nem percebe até olhar de perto:
+
+![Servidores MCP duplicados](docs/reloaded%20mcp%20form%20diff%20scope.png)
+
+Teams instalado duas vezes, Gmail três vezes, Playwright três vezes — cada cópia desperdiçando tokens a cada sessão. Os rótulos de scope (`Global` / `nicole`) mostram exatamente onde cada duplicata mora, para você decidir qual manter e qual remover.
 
 O resultado:
 - Uma preferência que deveria ser global fica presa num projeto
