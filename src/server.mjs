@@ -195,7 +195,22 @@ async function handleRequest(req, res) {
             // MCP config JSON — the config itself is tiny, tool schemas are deferred
             text = JSON.stringify(item.mcpConfig || {}, null, 2);
           } else if (item.category === "skill") {
-            text = `${item.name}\n${item.description || ""}`;
+            // Claude Code loads skill name + full frontmatter description (not truncated).
+            // Read SKILL.md and extract the frontmatter description field.
+            const skillMdPath = join(item.path, "SKILL.md");
+            try {
+              const skillContent = await readFile(skillMdPath, "utf-8");
+              const fmMatch = skillContent.match(/^---\n([\s\S]*?)\n---/);
+              if (fmMatch) {
+                // Extract full description from frontmatter
+                const descMatch = fmMatch[1].match(/description:\s*(.+(?:\n(?![\w-]+:).+)*)/);
+                text = `${item.name}\n${descMatch ? descMatch[1].trim() : item.description || ""}`;
+              } else {
+                text = `${item.name}\n${item.description || ""}`;
+              }
+            } catch {
+              text = `${item.name}\n${item.description || ""}`;
+            }
           } else if (item.path) {
             // CLAUDE.md, rules, commands, agents: read file content
             text = await readFile(item.path, "utf-8");
