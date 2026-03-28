@@ -97,7 +97,7 @@ Every MCP server you install exposes tool descriptions that go straight into Cla
 
 CCO connects to every MCP server, retrieves actual tool definitions, and runs them through:
 
-- **58 detection patterns** cherry-picked from 36 open source scanners
+- **60 detection patterns** cherry-picked from 36 open source scanners
 - **9 deobfuscation techniques** (zero-width chars, unicode tricks, base64, leetspeak, HTML comments)
 - **SHA256 hash baselines** — if a server's tools change between scans, you see a CHANGED badge immediately
 - **NEW / CHANGED / UNREACHABLE** status badges on every MCP item
@@ -164,7 +164,7 @@ Opens at `http://localhost:3847`. The `/cco` skill is auto-installed on first ru
 | Feature | Status | Description |
 |---------|:------:|-------------|
 | **Config Export/Backup** | ✅ Done | One-click export all configs to `~/.claude/exports/`, organized by scope |
-| **Security Scanner** | ✅ Done | 58 patterns, 9 deobfuscation techniques, rug-pull detection, NEW/CHANGED/UNREACHABLE badges |
+| **Security Scanner** | ✅ Done | 60 patterns, 9 deobfuscation techniques, rug-pull detection, NEW/CHANGED/UNREACHABLE badges |
 | **Config Health Score** | 📋 Planned | Per-project health score with actionable recommendations |
 | **Cross-Harness Portability** | 📋 Planned | Convert skills/configs between Claude Code ↔ Cursor ↔ Codex ↔ Gemini CLI |
 | **Cost Tracker** | 💡 Exploring | Track token usage and cost per session, per project |
