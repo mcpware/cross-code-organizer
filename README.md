@@ -84,10 +84,22 @@ Teams installed twice, Gmail three times, Playwright three times. You configured
 
 ## Keep Your Scopes Clean
 
-Claude Code has three invisible scope levels: **Global → Workspace → Project**. Everything in Global loads into every session. Claude doesn't care about scope when it creates things — a Python skill ends up in Global, loading into every React project.
+Claude Code silently organizes everything into three scope levels — but never tells you:
 
-- **Move anything with drag-and-drop** — Drag a skill from Project to Global. One gesture. All your projects can now use it.
-- **Find duplicates instantly** — All items grouped by category across scopes. Duplicates jump out immediately.
+```
+Global                    ← loads into EVERY session on your machine
+  └─ Workspace            ← loads into all projects under this folder
+       └─ Project         ← loads only when you're in this directory
+```
+
+Here's the problem: **Claude creates memories and skills in whatever directory you're currently in.** You tell Claude "always use ESM imports" while working in `~/myapp` — that memory is trapped in that project scope. Open a different project, Claude doesn't know it. You tell it again. Now you have the same memory in two places, both eating context tokens.
+
+Same with skills. You build a deploy skill in your backend repo — it lands in that project's scope. Your other projects can't see it. You end up recreating it everywhere.
+
+**CCO shows the full scope tree.** You can see exactly which memories, skills, and MCP servers affect which projects — then drag them to the right scope:
+
+- **Move anything with drag-and-drop** — Drag a memory from Project to Global. One gesture. Now every project on your machine has it.
+- **Find duplicates instantly** — All items grouped by category across scopes. Three copies of the same memory? Delete the extras.
 - **Undo everything** — Every move and delete has an undo button, including MCP JSON entries.
 - **Bulk operations** — Select mode: tick multiple items, move or delete all at once.
 
