@@ -21,6 +21,326 @@ const BASELINE_DIR = join(HOME, ".claude", ".cco-security");
 const BASELINE_PATH = join(BASELINE_DIR, "baselines.json");
 
 // ══════════════════════════════════════════════════════════════════════
+// EXTERNAL SCANNER ENGINE SUPPORT
+// ══════════════════════════════════════════════════════════════════════
+
+/**
+ * Registry of known external security scanner engines.
+ * CCO auto-detects installed ones and lets users switch between them.
+ * Each scanner's CLI is called with a path and returns SARIF or JSON findings.
+ */
+const EXTERNAL_SCANNERS = [
+  {
+    id: "cc-audit",
+    name: "cc-audit",
+    description: "Claude Code security auditor — 184 rules, false-positive handling, CWE IDs",
+    url: "https://github.com/ryo-ebata/cc-audit",
+    detectCmd: ["cc-audit", ["--version"]],
+    scanCmd: (path) => ["cc-audit", ["scan", path, "--format", "sarif", "--quiet"]],
+    outputFormat: "sarif",
+    license: "MIT",
+  },
+  {
+    id: "agentseal",
+    name: "AgentSeal",
+    description: "400+ rules — semantic ML detection, TR39 confusables, adversarial probes",
+    url: "https://github.com/AgentSeal/agentseal",
+    detectCmd: ["agentseal", ["--help"]],
+    scanCmd: (path) => ["agentseal", ["guard", path, "--output", "json", "--no-diff", "--no-registry"]],
+    outputFormat: "json-agentseal",
+    license: "FSL-1.1-Apache-2.0",
+  },
+  {
+    id: "agent-audit",
+    name: "agent-audit",
+    description: "OWASP Agentic Top 10 — AST taint analysis, 53 rules",
+    url: "https://github.com/HeadyZhang/agent-audit",
+    detectCmd: ["agent-audit", ["--version"]],
+    scanCmd: (path) => ["agent-audit", ["scan", path, "--format", "sarif"]],
+    outputFormat: "sarif",
+    license: "MIT",
+  },
+  {
+    id: "mcp-audit",
+    name: "mcp-audit",
+    description: "Secrets, shadow APIs, AI-BOM generation — 60 rules",
+    url: "https://github.com/apisec-inc/mcp-audit",
+    detectCmd: ["mcp-audit", ["--version"]],
+    scanCmd: (path) => ["mcp-audit", ["scan", path, "--format", "json"]],
+    outputFormat: "json-generic",
+    license: "MIT",
+  },
+];
+
+/**
+ * Detect which external scanners are installed on the system.
+ * Returns array of scanner objects with `installed: true/false` and `version`.
+ */
+async function detectExternalScanners() {
+  const results = [];
+
+  for (const scanner of EXTERNAL_SCANNERS) {
+    try {
+      const [cmd] = scanner.detectCmd;
+      // Use 'which' (Unix) or 'where' (Windows) to detect if binary exists
+      const whichCmd = process.platform === "win32" ? "where" : "which";
+      const binPath = await new Promise((resolve, reject) => {
+        execFile(whichCmd, [cmd], { timeout: 3000 }, (err, stdout) => {
+          if (err) reject(err);
+          else resolve(stdout.trim().split("\n")[0]);
+        });
+      });
+
+      // Try to get version (best-effort, not required)
+      let version = "installed";
+      try {
+        const [, args] = scanner.detectCmd;
+        const out = await new Promise((resolve, reject) => {
+          execFile(cmd, args, { timeout: 5000 }, (err, stdout) => {
+            if (err) resolve(""); // Some tools don't support --version
+            else resolve(stdout.trim().split("\n")[0]);
+          });
+        });
+        if (out) version = out;
+      } catch { /* version detection is optional */ }
+
+      results.push({ ...scanner, installed: true, version, binPath });
+    } catch {
+      results.push({ ...scanner, installed: false, version: null, binPath: null });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Run an external scanner engine and parse its output into CCO finding format.
+ * @param {string} scannerId - ID from EXTERNAL_SCANNERS registry
+ * @param {string} scanPath - Path to scan (usually ~/.claude/)
+ * @returns {object} Scan results in CCO format
+ */
+async function runExternalScan(scannerId, scanPath) {
+  const scanner = EXTERNAL_SCANNERS.find(s => s.id === scannerId);
+  if (!scanner) throw new Error(`Unknown scanner: ${scannerId}`);
+
+  const [cmd, args] = scanner.scanCmd(scanPath);
+
+  const rawOutput = await new Promise((resolve, reject) => {
+    execFile(cmd, args, { timeout: 120000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+      // Some scanners exit non-zero when findings exist — that's normal
+      if (err && !stdout) reject(new Error(`${scanner.name} failed: ${err.message}\n${stderr}`));
+      else resolve(stdout);
+    });
+  });
+
+  let parsed;
+  try {
+    parsed = JSON.parse(rawOutput);
+  } catch {
+    throw new Error(`${scanner.name} returned invalid JSON. First 200 chars: ${rawOutput.slice(0, 200)}`);
+  }
+
+  // Convert to CCO finding format based on output type
+  if (scanner.outputFormat === "sarif") {
+    return parseSarifFindings(parsed, scanner);
+  }
+  // Generic JSON: expect { findings: [...] } or similar
+  return parseGenericFindings(parsed, scanner);
+}
+
+/**
+ * Parse SARIF (Static Analysis Results Interchange Format) into CCO findings.
+ * SARIF spec: https://docs.oasis-open.org/sarif/sarif/v2.1.0/
+ */
+function parseSarifFindings(sarif, scanner) {
+  const findings = [];
+
+  for (const run of (sarif.runs || [])) {
+    const rules = {};
+    for (const rule of (run.tool?.driver?.rules || [])) {
+      rules[rule.id] = rule;
+    }
+
+    for (const result of (run.results || [])) {
+      const ruleId = result.ruleId || "UNKNOWN";
+      const rule = rules[ruleId] || {};
+      const severity = mapSarifSeverity(result.level);
+      const location = result.locations?.[0]?.physicalLocation;
+      const filePath = location?.artifactLocation?.uri || "";
+      const region = location?.region;
+
+      findings.push({
+        id: ruleId,
+        category: rule.properties?.category || mapRuleIdToCategory(ruleId),
+        severity,
+        name: rule.shortDescription?.text || rule.name || ruleId,
+        description: rule.fullDescription?.text || result.message?.text || "",
+        sourceType: "external_scanner",
+        sourceName: `${scanner.name}: ${filePath}`,
+        matchedText: result.message?.text?.slice(0, 200) || "",
+        context: region ? `Line ${region.startLine}${region.startColumn ? `:${region.startColumn}` : ""}` : filePath,
+        externalScanner: scanner.id,
+        externalRuleUrl: rule.helpUri || null,
+        owasp: rule.properties?.owasp || null,
+        cwe: rule.properties?.cwe || extractCweFromTags(rule.properties?.tags),
+      });
+    }
+  }
+
+  return {
+    ok: true,
+    engine: scanner.id,
+    engineName: scanner.name,
+    engineVersion: scanner.version || "unknown",
+    findings,
+    severityCounts: countSeverities(findings),
+  };
+}
+
+/**
+ * Parse generic JSON findings (non-SARIF scanners).
+ * Handles multiple output shapes including AgentSeal's mcp_results/skill_results format.
+ */
+function parseGenericFindings(data, scanner) {
+  const findings = [];
+
+  // AgentSeal format: { mcp_results: [...], skill_results: [...] }
+  if (data.mcp_results || data.skill_results) {
+    for (const result of (data.mcp_results || [])) {
+      for (const f of (result.findings || [])) {
+        findings.push({
+          id: f.code || "EXT",
+          category: mapAgentSealCode(f.code),
+          severity: normalizeSeverity(f.severity),
+          name: f.title || f.code,
+          description: f.description || "",
+          sourceType: "external_scanner",
+          sourceName: `${scanner.name}: ${result.name}`,
+          serverName: result.name,  // MCP server name — for click-to-navigate
+          matchedText: f.remediation || "",
+          context: result.source_file || result.command || "",
+          externalScanner: scanner.id,
+          externalRuleUrl: null,
+          owasp: null,
+          cwe: f.code?.startsWith("MCP-CVE") ? f.title : null,
+        });
+      }
+    }
+    for (const result of (data.skill_results || [])) {
+      for (const f of (result.findings || [])) {
+        findings.push({
+          id: f.code || "EXT",
+          category: mapAgentSealCode(f.code),
+          severity: normalizeSeverity(f.severity),
+          name: f.title || f.code,
+          description: f.description || "",
+          sourceType: "external_scanner",
+          sourceName: `${scanner.name}: ${result.name}`,
+          matchedText: f.remediation || "",
+          context: result.path || "",
+          externalScanner: scanner.id,
+        });
+      }
+    }
+    return {
+      ok: true,
+      engine: scanner.id,
+      engineName: scanner.name,
+      engineVersion: scanner.version || "unknown",
+      scanDuration: data.duration_seconds ? `${data.duration_seconds.toFixed(1)}s` : null,
+      findings,
+      severityCounts: countSeverities(findings),
+    };
+  }
+
+  // Generic format: { findings: [...] } or { results: [...] }
+  const rawFindings = data.findings || data.results || data.vulnerabilities || [];
+
+  for (const f of rawFindings) {
+    findings.push({
+      id: f.id || f.rule_id || f.ruleId || "EXT",
+      category: f.category || f.type || "external",
+      severity: normalizeSeverity(f.severity || f.level || "medium"),
+      name: f.name || f.title || f.rule || f.id || "Finding",
+      description: f.description || f.message || f.detail || "",
+      sourceType: "external_scanner",
+      sourceName: `${scanner.name}: ${f.file || f.path || f.source || ""}`,
+      matchedText: f.matched_text || f.match || f.evidence || "",
+      context: f.context || f.location || "",
+      externalScanner: scanner.id,
+      externalRuleUrl: f.url || f.help_url || null,
+      owasp: f.owasp || null,
+      cwe: f.cwe || null,
+    });
+  }
+
+  return {
+    ok: true,
+    engine: scanner.id,
+    engineName: scanner.name,
+    engineVersion: scanner.version || "unknown",
+    findings,
+    severityCounts: countSeverities(findings),
+  };
+}
+
+/** Map AgentSeal finding codes to CCO categories. */
+function mapAgentSealCode(code) {
+  if (!code) return "external";
+  if (code.startsWith("MCP-CVE")) return "supply_chain";
+  if (code.startsWith("MCP-007")) return "supply_chain";
+  if (code.startsWith("MCP-011")) return "sensitive_access";
+  if (code.startsWith("MCP-")) return "mcp_config";
+  if (code.startsWith("SKILL-")) return "prompt_injection";
+  return "external";
+}
+
+/** Map SARIF severity levels to CCO severity. */
+function mapSarifSeverity(level) {
+  const map = { error: "high", warning: "medium", note: "low", none: "info" };
+  return map[level] || "medium";
+}
+
+/** Normalize various severity strings to CCO's 5 levels. */
+function normalizeSeverity(sev) {
+  const s = String(sev).toLowerCase();
+  if (s === "critical" || s === "crit") return "critical";
+  if (s === "high" || s === "error" || s === "danger") return "high";
+  if (s === "medium" || s === "warning" || s === "warn" || s === "moderate") return "medium";
+  if (s === "low" || s === "note" || s === "minor") return "low";
+  return "info";
+}
+
+/** Try to extract CWE from SARIF rule tags. */
+function extractCweFromTags(tags) {
+  if (!Array.isArray(tags)) return null;
+  const cweTag = tags.find(t => /^CWE-\d+$/i.test(t));
+  return cweTag || null;
+}
+
+/** Map rule ID prefixes to categories (fallback). */
+function mapRuleIdToCategory(ruleId) {
+  const prefix = ruleId.split("-")[0]?.toUpperCase();
+  const map = {
+    PI: "prompt_injection", TP: "tool_poisoning", TS: "tool_shadowing",
+    SF: "sensitive_access", DE: "data_exfiltration", CH: "credential_harvest",
+    CE: "code_execution", CI: "command_injection", HK: "suspicious_hook",
+    SC: "supply_chain", PE: "persistence", XR: "cross_server_ref",
+    ASI: "owasp_agentic", EX: "exfiltration",
+  };
+  return map[prefix] || "external";
+}
+
+/** Count severities from a findings array. */
+function countSeverities(findings) {
+  const counts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+  for (const f of findings) {
+    if (counts[f.severity] !== undefined) counts[f.severity]++;
+  }
+  return counts;
+}
+
+// ══════════════════════════════════════════════════════════════════════
 // LAYER 1: DEOBFUSCATION (8 techniques from AgentSeal deobfuscate.py)
 // ══════════════════════════════════════════════════════════════════════
 
@@ -873,4 +1193,7 @@ export async function runSecurityScan(introspectionResults, scanData) {
   };
 }
 
-export { deobfuscate, scanText, PATTERNS, loadBaselines, compareBaselines, updateBaselines };
+export {
+  deobfuscate, scanText, PATTERNS, loadBaselines, compareBaselines, updateBaselines,
+  detectExternalScanners, runExternalScan, EXTERNAL_SCANNERS,
+};
