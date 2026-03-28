@@ -20,20 +20,27 @@ CCO includes a built-in security scanner with 60+ detection rules. For deeper sc
 | **[agent-audit](https://github.com/HeadyZhang/agent-audit)** | 53 | AST taint analysis, OWASP Agentic Top 10 (ASI-01 to ASI-10), "missing control" detection (no kill switch, no rate limit), memory poisoning | `pip install agent-audit` | MIT |
 | **[mcp-audit](https://github.com/apisec-inc/mcp-audit)** | 60 | Secrets exposure, shadow API inventory, AI-BOM (CycloneDX), endpoint classification, OWASP LLM Top 10 | `pip install mcp-audit` | MIT |
 
-## Why external engines?
+## Built-in vs external — they scan different things
 
-CCO's built-in scanner is fast and catches the most common threats. But specialized engines go deeper:
+**Built-in scanner (recommended first):** Connects to each MCP server via JSON-RPC, retrieves actual tool definitions, and scans descriptions for prompt injection and hidden instructions. This is the primary attack surface — tool descriptions go straight into Claude's context as trusted text.
 
-- **cc-audit** has false-positive exclusions that reduce noise (14+ exclusion patterns per rule vs zero in built-in)
-- **AgentSeal** uses machine learning to catch rephrased attacks that bypass regex
-- **agent-audit** does AST-level taint analysis — tracking data from tool inputs to dangerous sinks
-- **mcp-audit** generates AI-BOMs (software bill of materials) that enterprise security teams require
+**External scanners (complementary):** Scan your config files for supply chain risks, credential exposure, CVEs, and permission issues. They do NOT connect to MCP servers or read tool definitions — they check the config text itself.
 
-You don't have to choose one. Install multiple and switch between them in the dropdown to get different perspectives on the same configs.
+| What gets scanned | Built-in | External |
+|-------------------|:---:|:---:|
+| **Tool descriptions** (prompt injection, hidden instructions) | **Yes** | No |
+| **Tool schemas** (suspicious parameter names) | **Yes** | No |
+| Supply chain (unpinned packages, known malicious) | Basic | **Deep** |
+| Credential exposure (API keys, secrets) | Basic | **Deep** |
+| CVE checks (known vulnerabilities) | No | **Yes** |
+| File permissions (world-readable configs) | No | **Yes** |
+| Config hygiene (missing auth, insecure URLs) | No | **Yes** |
+
+**Best practice: run built-in first** (catches the dangerous stuff — hidden instructions in tool descriptions), then run an external engine for supply chain and config hygiene.
 
 ## CCO's advantage
 
-Other scanners produce reports. CCO produces **navigation**. When any engine finds an issue, you click the finding and land directly on the MCP server entry in the scope tree. Delete it, move it, or inspect its config — without leaving CCO.
+Other scanners produce reports. CCO produces **navigation**. When any engine finds an issue, you click "Fix with Claude →" to copy a detailed prompt — including the engine name, rule ID, server path, and suggested fix — ready to paste into Claude Code.
 
 ## Output format support
 
