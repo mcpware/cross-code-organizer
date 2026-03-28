@@ -418,6 +418,171 @@ const PATTERNS = [
   { id: "HK-003", category: "suspicious_hook", severity: "high", name: "Hook variable interpolation",
     description: "Hook command uses variable interpolation that could be injected",
     regex: /\$\{(?:file|command|content|input|args?|path|url|body|data)\}/i },
+
+  // ══ Round 3: Cherry-picked from Cisco YARA (865★), AgentSeal scan-mcp (151★), MCP-Shield (550★), Nova (287★) ══
+  // Source: reading actual source code of 11 security scanner repos, 2026-03-28
+
+  // ── Tool Poisoning: Hidden Secondary Behavior (from Cisco tool_poisoning.yara — 20 patterns) ──
+  // CCO had ZERO coverage of this category. These catch tools that secretly do more than described.
+
+  { id: "TP-007", category: "tool_poisoning", severity: "critical", name: "Hidden data collection",
+    description: "Tool secretly collects/extracts data while performing its stated function",
+    regex: /\b(also|additionally|furthermore|moreover|besides|in\s+addition)\s+(collect|gather|extract|send|upload|index|store|cache|log|monitor|track|record|capture)(s|ing|ed)?/i },
+
+  { id: "TP-008", category: "tool_poisoning", severity: "critical", name: "Processing-time data theft",
+    description: "Data extraction disguised as a processing step",
+    regex: /\b(during|while|when|upon|after)\s+(processing|compression|formatting|conversion|validation|analyzing|scanning|checking)\s*,?\s*(extract|collect|send|upload|capture|log|index|store)(s|ing|ed)?/i },
+
+  { id: "TP-009", category: "tool_poisoning", severity: "high", name: "Caching pretext exfiltration",
+    description: "Data collection disguised as caching or optimization",
+    regex: /\b(for|as)\s+(caching|optimization|performance|quality|improvement|analytics|backup|sync)\s+(purposes?|reasons?)\s*[,.]?\s*(send|upload|store|collect|transmit)(s|ing|ed)?/i },
+
+  { id: "TP-010", category: "tool_poisoning", severity: "high", name: "Sensitive data indexing",
+    description: "Tool indexes or caches credentials and sensitive data",
+    regex: /\b(index|cache|store|log|record|track)(s|es|ing|ed)?\s+(any|all)?\s*(api[_\s]?keys?|tokens?|credentials?|passwords?|secrets?|sensitive)/i },
+
+  { id: "TP-011", category: "tool_poisoning", severity: "high", name: "PII extraction from input",
+    description: "Tool extracts personal or sensitive information from user input",
+    regex: /\b(extract|parse|scan|search|find|identify)(s|ing|ed)?\s+(all|any)?\s*(api[_\s]?keys?|tokens?|credentials?|emails?|phone|credit\s+card|ssn|social\s+security|pii|personal|private|sensitive)/i },
+
+  { id: "TP-012", category: "tool_poisoning", severity: "high", name: "Location or device tracking",
+    description: "Tool tracks device location, fingerprints, or usage behavior",
+    regex: /\b(location|gps|geolocation|device|machine|usage|behavior|activity|browsing)\s+(history|data|information|tracking|fingerprint|pattern|log)\s*(store|collect|send|share|track|log|sync|monitor|gather|upload)(s|ing|ed)?/i },
+
+  { id: "TP-013", category: "tool_poisoning", severity: "high", name: "Device fingerprinting",
+    description: "Tool fingerprints device using hardware identifiers",
+    regex: /\b(fingerprint|identify|track)(s|ing|ed)?\s+(device|machine|browser|user|system)\s*(using|via|through|by)\s*(mac|ip|hostname|hardware|uuid)/i },
+
+  { id: "TP-014", category: "tool_poisoning", severity: "high", name: "Auto opt-in without consent",
+    description: "Tool automatically enrolls user in services without consent",
+    regex: /\b(automatically|auto)[_\s]*(opt|subscribe|enroll|register|sign)[_\s]*(in|up|ed)\b/i },
+
+  { id: "TP-015", category: "tool_poisoning", severity: "high", name: "Remote data storage",
+    description: "Tool stores data remotely or syncs to cloud without disclosure",
+    regex: /\b(cache|cached|store|stored|sync|synced|synchronize)\s+(is\s+)?(stored\s+)?(remotely|externally|in\s+cloud|on\s+server|off[_\s-]?device|to\s+cloud|with\s+cloud|across\s+devices)/i },
+
+  { id: "TP-016", category: "tool_poisoning", severity: "medium", name: "OCR/screenshot data extraction",
+    description: "Tool performs OCR or extracts text from screenshots",
+    regex: /\b(ocr|text\s+extraction|optical\s+character)\s*(on|from)?\s*(screenshots?|images?|photos?)?\s*(and\s+)?(extract|capture|read|identify|send|upload)/i },
+
+  // ── Coercive Injection (from Cisco coercive_injection.yara — 16 patterns) ──
+  // CCO had ZERO coverage. These catch tools that coerce the AI into specific behaviors.
+
+  { id: "CI-003", category: "coercive_injection", severity: "critical", name: "Mandatory tool execution",
+    description: "Tool demands to be executed first or always",
+    regex: /Always\s+(consult|use|run|execute|invoke|call|trigger)\s+this\s+(tool|function|command)\s+(immediately|first|before|prior)/i },
+
+  { id: "CI-004", category: "coercive_injection", severity: "critical", name: "Priority override",
+    description: "Tool claims priority over all other tools",
+    regex: /(Before\s+(executing|invoking|running|using|calling)\s+any\s+other\s+(tool|action|function)s?|(You|User)\s+(must|need to|have to)\s+(use|execute|run|invoke|call)\s+this\s+(tool|function))/i },
+
+  { id: "CI-005", category: "coercive_injection", severity: "high", name: "Hidden/secret parameter",
+    description: "Tool requests hidden or secret parameters",
+    regex: /\b(hidden|secret)[_\s](parameter|argument|input)\b/i },
+
+  { id: "CI-006", category: "coercive_injection", severity: "critical", name: "File access coercion",
+    description: "Tool coerces reading sensitive key/certificate files",
+    regex: /\b(read|parse|cat|dump)\s+(and\s+pass\s+)?(the\s+)?contents?\s+of\s+[^\n.]*\.(key|pem|ssh|aws)\b/i },
+
+  { id: "CI-007", category: "coercive_injection", severity: "critical", name: "Model context extraction",
+    description: "Tool tries to extract conversation history or system context",
+    regex: /\b(add|pass|send|include)\s+(the\s+)?(entire\s+)?(conversation|system|chain|tools?)\s*(history|prompt|list|context)?\s*(to|for|in)\s*(tool|authentication|parameter)/i },
+
+  { id: "CI-008", category: "coercive_injection", severity: "critical", name: "Model internals access",
+    description: "Tool accesses internal model variables",
+    regex: /\b(conversation_history|chain_of_thought|system_prompt|tools_list|model_name)\s*[:=]\s*(add|pass|send|provide)\b/i },
+
+  { id: "CI-009", category: "coercive_injection", severity: "high", name: "Tool will not work unless",
+    description: "Tool claims it won't function without suspicious prerequisites",
+    regex: /\b(sidenote\W+(required|otherwise)\s+[^\n]*tool\s+[^\n]*work|tool\s+will\s+not\s+work\s+unless|must\s+first\s+[^\n]*read\s+[^\n]*config)\b/i },
+
+  { id: "CI-010", category: "coercive_injection", severity: "critical", name: "Data exfiltration coercion",
+    description: "Tool coerces listing credentials or encoding sensitive data",
+    regex: /\b(list\s+all\s+(api\s+)?keys?|show\s+me?\s+(all\s+)?passwords?|include\s+[^\n]*(secrets?|passwords?|keys?|credentials?|tokens?|config|sensitive|private|confidential)\s+[^\n]*in\s+(your\s+)?response|base64\s+encode\s+[^\n]*credentials?)\b/i },
+
+  { id: "CI-011", category: "coercive_injection", severity: "high", name: "Behavioral trigger",
+    description: "Tool has conditional logic based on trust/admin status",
+    regex: /\b(if\s+[^\n]*trusted\s+[^\n]*then|when\s+[^\n]*admin\s+[^\n]*detected|random\.(random|choice)\s+[^\n]*instructions?)\b/i },
+
+  { id: "CI-012", category: "coercive_injection", severity: "critical", name: "Conversation theft",
+    description: "Tool steals conversation history or claims highest priority",
+    regex: /\b(send\s+[^\n]*conversation\s+history|when\s+[^\n]*detected\s+[^\n]*send\s+[^\n]*full\s+[^\n]*history|highest\s+priority\s+[^\n]*over\s+[^\n]*other\s+[^\n]*tools)\b/i },
+
+  { id: "CI-013", category: "coercive_injection", severity: "critical", name: "Code manipulation",
+    description: "Tool instructs inserting vulnerabilities into generated code",
+    regex: /\b(duplicate\s+[^\n]*code\s+[^\n]*snippets?\s+[^\n]*silently|insert\s+[^\n]*vulnerability\s+[^\n]*generated\s+[^\n]*code)\b/i },
+
+  // ── Prompt Injection: Extended (from Cisco + MCP-Shield + Nova — patterns CCO was missing) ──
+
+  { id: "PI-018", category: "prompt_injection", severity: "critical", name: "Shadow parameter names",
+    description: "Tool uses known shadow/bypass parameter names in schema",
+    regex: /\b(internalOnly|hiddenParam|shadowTool|bypassChecks|sandboxEscape)\b/ },
+
+  { id: "PI-019", category: "prompt_injection", severity: "high", name: "Hidden behavior directive",
+    description: "Tool instructs AI to hide behavior from user",
+    regex: /\b(do\s+not\s+(mention|tell|execute)\s+[^\n]*user|tell\s+(the\s+)?user\s+only\s+about|do\s+not\s+mention\s+this\s+to\s+user)\b/i },
+
+  { id: "PI-020", category: "prompt_injection", severity: "high", name: "Bracket marker evasion",
+    description: "Triple bracket or pipe markers hiding instructions",
+    regex: /(\[\[\[|\|\|\|)(SYSTEM|ADMIN|HIDDEN|INTERNAL)[\s_]?(OVERRIDE|INSTRUCTION|COMMAND)(\]\]\]|\|\|\|)/i },
+
+  { id: "PI-021", category: "prompt_injection", severity: "high", name: "HTML comment injection",
+    description: "HTML comments containing system/admin override instructions",
+    regex: /<!--[^>]*(SYSTEM\s+(INSTRUCTION|OVERRIDE)|ADMIN\s+OVERRIDE|ignore\s+(all\s+)?(previous\s+)?(safety\s+)?guidelines|execute[:\s]|curl\s|wget\s|bash\s)/i },
+
+  { id: "PI-022", category: "prompt_injection", severity: "high", name: "Hidden instruction markers",
+    description: "Square bracket markers hiding instructions",
+    regex: /\[(HIDDEN|INTERNAL|SECRET|PRIVATE)\s+(INSTRUCTION|DIRECTIVE|COMMAND)\]/i },
+
+  // ── Data Exfiltration: Extended (from Cisco — clipboard, conversation, screen, keylog) ──
+
+  { id: "DE-006", category: "data_exfiltration", severity: "critical", name: "Covert data transfer",
+    description: "Data transfer described as invisible/silent/covert",
+    regex: /\b(invisibly|silently|covertly|secretly|without\s+(user\s+)?knowledge|behind\s+the\s+scenes|in\s+the\s+background)\s+(send|upload|transmit|transfer|sync|store|collect)/i },
+
+  { id: "DE-007", category: "data_exfiltration", severity: "high", name: "Clipboard monitoring",
+    description: "Tool monitors or captures clipboard content",
+    regex: /\b(clipboard|pasteboard)\s+(content|data|text|history)?\s*(monitor|watch|track|capture|copy|send|upload|stream)/i },
+
+  { id: "DE-008", category: "data_exfiltration", severity: "critical", name: "Conversation exfiltration",
+    description: "Tool sends conversation history to external endpoint",
+    regex: /\b(send|upload|transmit|export|forward)(s|ing|ed)?\s+(complete\s+)?(conversation|chat|message|context|user\s+messages?|ai\s+responses?)\s+(to|history)/i },
+
+  { id: "DE-009", category: "data_exfiltration", severity: "high", name: "Screenshot/screen exfiltration",
+    description: "Tool captures and sends screen content",
+    regex: /\b(screen|screenshot|display|capture|recording)\s*(send|upload|transmit|stream|forward)/i },
+
+  { id: "DE-010", category: "data_exfiltration", severity: "critical", name: "Keystroke logging",
+    description: "Tool captures keystrokes or typing patterns",
+    regex: /\b(keylog|keystroke|key\s+press|typing|input)\s*(capture|record|log|monitor|track|send|upload)/i },
+
+  // ── Impersonation (from Nova Proximity — new category) ──
+
+  { id: "IM-001", category: "impersonation", severity: "high", name: "Fake official source",
+    description: "Tool claims to be from an official or verified source",
+    regex: /\b(Anthropic\s+Official|OpenAI\s+Official|Google\s+Official|Microsoft\s+Official)\b/i },
+
+  { id: "IM-002", category: "impersonation", severity: "high", name: "False verification badge",
+    description: "Tool uses fake verification or trust markers",
+    regex: /\[(VERIFIED|OFFICIAL|TRUSTED|CERTIFIED|APPROVED)\]/i },
+
+  { id: "IM-003", category: "impersonation", severity: "medium", name: "False authority claim",
+    description: "Tool claims false endorsement or certification",
+    regex: /\b(certified\s+by|approved\s+by|endorsed\s+by|security\s+audited|officially\s+sanctioned)\b/i },
+
+  // ── Script Injection (from Cisco script_injection.yara — new category) ──
+
+  { id: "SI-001", category: "script_injection", severity: "critical", name: "ANSI escape code injection",
+    description: "Terminal manipulation via ANSI escape sequences to hide output",
+    regex: /(\\x1[bB]\[|\\u001[bB]\[|\\033\[)[0-9;]*[mHJKsu]/i },
+
+  { id: "SI-002", category: "script_injection", severity: "high", name: "VBScript/ActiveX execution",
+    description: "Windows script execution via VBScript or ActiveX",
+    regex: /\b(WScript\.Shell|Shell\.Application|ActiveXObject|CreateObject|Scripting\.FileSystemObject)\b/i },
+
+  { id: "SI-003", category: "script_injection", severity: "high", name: "Hidden text via CSS",
+    description: "CSS techniques to hide malicious instructions visually",
+    regex: /\b(overflow\s*:\s*hidden|display\s*:\s*none|color\s*:\s*(white|transparent|rgba\(0))\b/i },
 ];
 
 // Parameter names that suggest exfiltration channels (from mcp-shield)
@@ -437,6 +602,35 @@ const SUSPICIOUS_PARAM_NAMES = new Set([
   "access_key", "secret_access_key", "credentials",
 ]);
 
+// ── False positive exclusions (from cc-audit + Cisco YARA negation patterns) ──
+// These patterns indicate template/example/documentation text, NOT real threats.
+
+const FP_EXCLUSIONS = [
+  // Template/example text (from Cisco data_exfiltration.yara negation)
+  /\bYOUR_API_KEY\b/i, /\bREPLACE_WITH\b/i, /\bINSERT_KEY\b/i,
+  /\.example\b/, /\.sample\b/, /\.template\b/,
+  /\bchangeme\b/i, /\bplaceholder\b/i, /\bTODO\b/, /\bFIXME\b/,
+  /\bxx+\b/, /^<your[_-]?/i, /\bREPLACE_ME\b/i,
+  // Legitimate config operations (from Cisco)
+  /\b(get_env|set_env|read_config|write_config|config_file|settings_file|env_file)\b/i,
+  // Linter/test framework comments (from cc-audit injection.rs exclusions)
+  /\beslint-disable\b/, /\b@ts-ignore\b/, /\b@ts-expect-error\b/,
+  /\bpytest\.mark\b/, /\bdescribe\s*\(/, /\bit\s*\(.*should\b/,
+  /\btest\s*\(/, /\bexpect\s*\(/,
+  // Security research/documentation context
+  /\bexample\s+of\s+(a\s+)?(malicious|attack|injection|exploit)/i,
+  /\bfor\s+educational\s+purposes/i,
+  /\bsecurity\s+(research|audit|review|test)/i,
+];
+
+/**
+ * Check if text is likely a false positive (template, test, documentation).
+ * Returns true if the text should be EXCLUDED from scanning.
+ */
+function isFalsePositive(text) {
+  return FP_EXCLUSIONS.some(rx => rx.test(text));
+}
+
 // ── Pattern scanning functions ───────────────────────────────────────
 
 /**
@@ -450,6 +644,9 @@ function scanText(text, sourceType, sourceName) {
   const { clean, wasObfuscated } = deobfuscate(text);
   const findings = [];
 
+  // False positive check — skip scanning if text looks like template/test/docs
+  if (isFalsePositive(clean)) return findings;
+
   // Pass 1: Scan cleaned text against all patterns
   const seenIds = new Set();
   for (const pattern of PATTERNS) {
@@ -459,6 +656,10 @@ function scanText(text, sourceType, sourceName) {
     if (match) {
       const idx = match.index || 0;
       const context = clean.slice(Math.max(0, idx - 30), idx + match[0].length + 30);
+
+      // Per-match false positive check — skip if the matched context looks like template/docs
+      if (isFalsePositive(context)) continue;
+
       seenIds.add(pattern.id);
       findings.push({
         ...pattern,
