@@ -583,23 +583,100 @@ const PATTERNS = [
   { id: "SI-003", category: "script_injection", severity: "high", name: "Hidden text via CSS",
     description: "CSS techniques to hide malicious instructions visually",
     regex: /\b(overflow\s*:\s*hidden|display\s*:\s*none|color\s*:\s*(white|transparent|rgba\(0))\b/i },
+
+  // ── Deserialization Attacks (from Nova Proximity) ──
+
+  { id: "CE-006", category: "code_execution", severity: "critical", name: "Unsafe deserialization",
+    description: "Deserialization of untrusted data can lead to remote code execution",
+    regex: /\b(pickle\.loads?|marshal\.loads?|yaml\.(?:unsafe_)?load\s*\(|shelve\.open)\b/i },
+
+  // ── Wildcard Permission Detection (from Nova Proximity) ──
+
+  { id: "PE-003", category: "persistence", severity: "high", name: "Wildcard tool permissions",
+    description: "Tool grants unrestricted access to dangerous capabilities",
+    regex: /\b(Bash\s*\(\s*\*\s*\)|Write\s*[:(]\s*\*|Read\s*[:(]\s*\*|Edit\s*[:(]\s*\*|Execute\s*[:(]\s*\*)\b/ },
+
+  // ── Tool Shadowing: Extended (from AgentSeal MCPR-103 + MCP-Shield) ──
+
+  { id: "TS-004", category: "tool_shadowing", severity: "high", name: "Cross-tool data forwarding",
+    description: "Tool forwards or copies data to another tool/endpoint",
+    regex: /\b(also\s+(send|copy|forward|include)\s+(to|in))\b/i },
+
+  { id: "TS-005", category: "tool_shadowing", severity: "high", name: "Output redirection",
+    description: "Tool redirects output to a different destination",
+    regex: /\bredirect\b.*\b(to|output)\b/i },
+
+  { id: "TS-006", category: "tool_shadowing", severity: "critical", name: "BCC data leak",
+    description: "Tool secretly copies data (BCC-style) to additional recipient",
+    regex: /\bbcc\s*:/i },
+
+  { id: "TS-007", category: "tool_shadowing", severity: "high", name: "Tool replacement directive",
+    description: "Tool instructs replacing or overriding another tool",
+    regex: /\b(instead\s+of|replace)\s+(using|calling)\b/i },
+
+  // ── Credential Harvesting: Extended (from AgentSeal MCPR-102 + Cisco) ──
+
+  { id: "CH-009", category: "credential_harvest", severity: "critical", name: "Credential read-then-send",
+    description: "Pattern of reading credentials then sending them externally",
+    regex: /\b(read|get|cat|access|exfiltrate)\b.{0,120}\b(api[_\s]?key|secret[_\s]?key|token|password|passphrase)\b/i },
+
+  { id: "CH-010", category: "credential_harvest", severity: "critical", name: "Credential send-after-read",
+    description: "Pattern of obtaining credentials then transmitting them",
+    regex: /\b(api[_\s]?key|secret[_\s]?key|access[_\s]?token)\b.{0,120}\b(send|post|upload|pass|include)\b/i },
+
+  { id: "CH-011", category: "credential_harvest", severity: "high", name: "MCP config file access",
+    description: "Attempts to read MCP configuration files containing server credentials",
+    regex: /\bmcp\.json\b/i },
+
+  { id: "CH-012", category: "credential_harvest", severity: "high", name: "Wallet/keychain access",
+    description: "Attempts to access cryptocurrency wallets or OS keychains",
+    regex: /\b(wallet\.dat|keychain)\b/i },
+
+  // ── Data Exfiltration: Extended endpoints (from Nova + Cisco) ──
+
+  { id: "DE-011", category: "data_exfiltration", severity: "high", name: "Known exfil endpoints (extended)",
+    description: "References known data exfiltration services",
+    regex: /\b(pastebin\.com|hastebin\.com|transfer\.sh|file\.io|0x0\.st|ix\.io)\b/i },
+
+  // ── Supply Chain: Extended (from AgentSeal + Cisco) ──
+
+  { id: "SC-002", category: "supply_chain", severity: "high", name: "Unpinned uvx/pip package",
+    description: "Package installed without version pinning via uvx or pip",
+    regex: /\b(uvx|pip\s+install)\s+(?!.*==)[a-z][a-z0-9_-]+\b/i },
+
+  // ── Suspicious Parameter Names: Extended (from AgentSeal MCPR-105) ──
+
+  { id: "EP-002", category: "exfil_params", severity: "high", name: "Credential parameter in schema",
+    description: "Tool requests credential-like parameters in its input schema",
+    regex: null, // Handled in scanParamNames() — extended set below
+  },
 ];
 
 // Parameter names that suggest exfiltration channels (from mcp-shield)
 const SUSPICIOUS_PARAM_NAMES = new Set([
-  // Exfiltration channels (mcp-shield)
+  // Exfiltration channels (mcp-shield + AgentSeal MCPR-105)
   "note", "notes", "feedback", "details", "extra",
   "additional", "metadata", "debug", "sidenote",
   "context", "annotation", "reasoning", "remark",
-  // Hidden instructions (AgentShield)
+  // Hidden instructions (AgentShield + AgentSeal)
   "hidden", "internal", "system_prompt", "hidden_instructions",
-  "override_instructions", "jailbreak_mode",
-  // Credential harvesting (AgentShield + Pipelock)
+  "override_instructions", "jailbreak_mode", "instructions",
+  // Credential harvesting (AgentShield + Pipelock + AgentSeal MCPR-105)
   // Note: "password" excluded — legitimate in login/sharing tools
-  "callback_url", "webhook_url", "exfil_url",
+  "callback_url", "webhook_url", "exfil_url", "remote_url",
   "ssh_key", "private_key", "api_key", "secret_key",
-  "auth_token", "bearer_token", "jwt",
+  "auth_token", "bearer_token", "jwt", "session_token",
   "access_key", "secret_access_key", "credentials",
+  "csrf_token", "cookie",
+  // File-based credentials (AgentSeal MCPR-105)
+  "env_file", "dotenv", "secrets_file", "key_file", "pem_file", "cert_file",
+]);
+
+// Tools where credential-like param names are legitimate (AgentSeal allowlist)
+const CREDENTIAL_TOOL_ALLOWLIST = new Set([
+  "login", "authenticate", "oauth", "connect", "sign_in",
+  "create_token", "refresh_token", "set_credentials",
+  "configure", "setup", "register",
 ]);
 
 // ── False positive exclusions (from cc-audit + Cisco YARA negation patterns) ──
@@ -698,6 +775,10 @@ function scanText(text, sourceType, sourceName) {
  */
 function scanParamNames(inputSchema, toolName, serverName) {
   if (!inputSchema?.properties) return [];
+
+  // Skip tools where credential-like params are legitimate (AgentSeal MCPR-105 allowlist)
+  if (CREDENTIAL_TOOL_ALLOWLIST.has(toolName?.toLowerCase())) return [];
+
   const findings = [];
 
   for (const paramName of Object.keys(inputSchema.properties)) {
@@ -1043,9 +1124,72 @@ export async function runSecurityScan(introspectionResults, scanData) {
     }
   }
 
-  // Cross-server reference scan disabled — too many false positives.
-  // Short server names (e.g. "exa") match common words in descriptions.
-  // TODO: re-enable with allowlist + minimum name length filter.
+  // ── Phase 2c: Cross-server analysis (from AgentSeal MCPR-103 + MCPR-108) ──
+
+  // Cross-server tool name collision detection
+  const toolNameMap = {}; // tool name → [server names]
+  for (const server of introspectionResults.filter(s => s.ok)) {
+    for (const tool of server.tools) {
+      const key = tool.name.toLowerCase();
+      if (!toolNameMap[key]) toolNameMap[key] = [];
+      toolNameMap[key].push(server.serverName);
+    }
+  }
+  for (const [toolName, servers] of Object.entries(toolNameMap)) {
+    if (servers.length > 1) {
+      allFindings.push({
+        id: "TS-008", category: "tool_shadowing", severity: "medium",
+        name: "Tool name collision across servers",
+        description: `Tool "${toolName}" exists on ${servers.length} servers: ${servers.join(", ")}. An attacker could shadow a trusted tool with a malicious one.`,
+        sourceType: "cross_server", sourceName: servers.join(" + "),
+        matchedText: toolName, context: `Servers: ${servers.join(", ")}`,
+      });
+    }
+  }
+
+  // Cross-server tool reference detection (MCPR-103)
+  const MIN_CROSS_REF_NAME_LEN = 4; // AgentSeal: skip short names to reduce FP
+  for (const server of introspectionResults.filter(s => s.ok)) {
+    for (const tool of server.tools) {
+      if (!tool.description) continue;
+      const descLower = tool.description.toLowerCase();
+      for (const otherServer of introspectionResults.filter(s => s.ok && s.serverName !== server.serverName)) {
+        for (const otherTool of otherServer.tools) {
+          if (otherTool.name.length < MIN_CROSS_REF_NAME_LEN) continue;
+          const nameRegex = new RegExp(`\\b${otherTool.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, "i");
+          if (nameRegex.test(descLower)) {
+            allFindings.push({
+              id: "TS-009", category: "tool_shadowing", severity: "high",
+              name: "Cross-server tool reference",
+              description: `Tool "${tool.name}" on "${server.serverName}" references tool "${otherTool.name}" from "${otherServer.serverName}". This could indicate tool shadowing.`,
+              sourceType: "cross_server",
+              sourceName: `${server.serverName}/${tool.name}`,
+              matchedText: otherTool.name,
+              context: `References "${otherTool.name}" from server "${otherServer.serverName}"`,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Excessive destructive permissions check (MCPR-108)
+  for (const server of introspectionResults.filter(s => s.ok)) {
+    const destructiveCount = server.tools.filter(t => t.annotations?.destructiveHint === true).length;
+    const total = server.tools.length;
+    if (total > 0 && destructiveCount > total / 2 && destructiveCount >= 3) {
+      const names = server.tools.filter(t => t.annotations?.destructiveHint === true).slice(0, 5).map(t => t.name);
+      allFindings.push({
+        id: "PE-004", category: "persistence", severity: "medium",
+        name: "Excessive destructive permissions",
+        description: `Server "${server.serverName}" has ${destructiveCount}/${total} destructive tools. High proportion increases risk of unintended data modification.`,
+        sourceType: "tool_description",
+        sourceName: server.serverName,
+        matchedText: `${destructiveCount}/${total} destructive`,
+        context: `Destructive tools: ${names.join(", ")}`,
+      });
+    }
+  }
 
   // ── Phase 3: Baseline comparison ──
   const savedBaselines = await loadBaselines();
