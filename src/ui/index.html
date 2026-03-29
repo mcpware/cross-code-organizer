@@ -150,15 +150,23 @@
     <div class="detail hidden" id="securityPanel">
       <div class="detail-top">
         <h2 id="securityTitle">🛡️ Security Scan</h2>
-        <button class="d-btn d-btn-move security-rescan-btn hidden" id="securityRescanBtn" type="button">Rescan</button>
         <button class="detail-x" id="securityClose" type="button">✕</button>
+      </div>
+
+      <div class="security-action-bar" id="securityActionBar">
+        <div class="security-engine-col">
+          <select class="security-engine-select" id="securityEngineSelect">
+            <option value="built-in">Built-in (60+ rules)</option>
+          </select>
+          <span class="security-engine-info" id="securityEngineInfo"></span>
+        </div>
+        <button class="d-btn d-btn-move security-scan-btn" id="securityStartBtn" type="button">▶ Scan</button>
       </div>
 
       <div class="security-body" id="securityBody">
         <div class="security-intro" id="securityIntro">
           <p>Scan your MCP servers for prompt injection, tool poisoning, credential exposure, and other security threats.</p>
-          <p class="security-note">This connects to each MCP server to inspect tool definitions — the actual attack surface.</p>
-          <button class="d-btn d-btn-move security-start-btn" id="securityStartBtn" type="button">Start Security Scan</button>
+          <p class="security-note">Connects to each MCP server to inspect tool definitions — the actual attack surface.</p>
         </div>
         <div class="security-progress hidden" id="securityProgress">
           <div class="security-progress-text" id="securityProgressText">Connecting to MCP servers...</div>
@@ -170,7 +178,7 @@
       </div>
 
       <div class="security-footer hidden" id="securityFooter">
-        <div class="security-footer-note" id="securityFooterNote"></div>
+        <span class="security-footer-note" id="securityFooterNote"></span>
       </div>
     </div>
   </div>

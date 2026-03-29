@@ -2398,15 +2398,63 @@ let securityScanResults = null;
 let securityBadges = {};
 /** Map of MCP server name → baseline status ("new" | "changed" | null). */
 let securityBaselineStatus = {};
+/** Detected external scanner engines. */
+let detectedScanners = [];
+
+/** Detect installed external scanners and populate dropdown. */
+async function loadExternalScanners() {
+  const select = document.getElementById("securityEngineSelect");
+  const info = document.getElementById("securityEngineInfo");
+  if (!select) return;
+
+  try {
+    const resp = await fetch("/api/security-scanners");
+    const result = await resp.json();
+    if (!result.ok) return;
+
+    detectedScanners = result.scanners.filter(s => s.installed);
+    const allScanners = result.scanners || [];
+
+    if (detectedScanners.length > 0) {
+      // Add installed scanners to dropdown
+      for (const scanner of detectedScanners) {
+        const opt = document.createElement("option");
+        opt.value = scanner.id;
+        opt.textContent = `${scanner.name} (${scanner.description.split("—")[0].trim()})`;
+        select.appendChild(opt);
+      }
+    }
+
+    // Always show "Add more engines" link at bottom
+    const notInstalled = allScanners.filter(s => !s.installed);
+    if (notInstalled.length > 0 || allScanners.length > 0) {
+      info.innerHTML = `<a href="https://github.com/mcpware/claude-code-organizer/blob/main/docs/scanner-engines.md" target="_blank">+ Add scanner engines</a>`;
+    }
+
+    select.addEventListener("change", () => {
+      const selected = detectedScanners.find(s => s.id === select.value);
+      if (selected) {
+        info.innerHTML = `<a href="${selected.url}" target="_blank">${selected.license}</a> · <a href="https://github.com/mcpware/claude-code-organizer/blob/main/docs/scanner-engines.md" target="_blank">+ More</a>`;
+      } else {
+        info.innerHTML = `<a href="https://github.com/mcpware/claude-code-organizer/blob/main/docs/scanner-engines.md" target="_blank">+ Add scanner engines</a>`;
+      }
+    });
+  } catch {
+    // Even if detection fails, show the link
+    info.innerHTML = `<a href="https://github.com/mcpware/claude-code-organizer/blob/main/docs/scanner-engines.md" target="_blank">+ Add scanner engines</a>`;
+  }
+}
 
 function setupSecurityScan() {
   const btn = document.getElementById("securityScanBtn");
   const panel = document.getElementById("securityPanel");
   const closeBtn = document.getElementById("securityClose");
   const startBtn = document.getElementById("securityStartBtn");
-  const rescanBtn = document.getElementById("securityRescanBtn");
 
   if (!btn) return;
+
+  // Detect external scanners (non-blocking)
+  loadExternalScanners();
 
   // Cached results + new server check loaded in init() before renderAll
 
@@ -2419,7 +2467,14 @@ function setupSecurityScan() {
       await runSecurityScan();
     } else if (securityScanResults) {
       renderSecurityResults(securityScanResults);
+      // Sync dropdown with cached results engine
+      const cachedEngine = securityScanResults.engine || "built-in";
+      const select = document.getElementById("securityEngineSelect");
+      if (select && [...select.options].some(o => o.value === cachedEngine)) {
+        select.value = cachedEngine;
+      }
     }
+    // Otherwise show intro with engine selector — user clicks "Start Security Scan"
   });
 
   closeBtn?.addEventListener("click", () => {
@@ -2427,10 +2482,6 @@ function setupSecurityScan() {
   });
 
   startBtn?.addEventListener("click", async () => {
-    await runSecurityScan();
-  });
-
-  rescanBtn?.addEventListener("click", async () => {
     await runSecurityScan();
   });
 
@@ -2531,11 +2582,21 @@ async function runSecurityScan() {
   progressBar.classList.remove("security-bar-error");
   progressText.textContent = "Connecting to MCP servers...";
 
-  try {
-    progressBar.style.width = "20%";
-    progressText.textContent = "Fetching tool definitions from MCP servers...";
+  // Disable scan button during scan
+  const scanBtn = document.getElementById("securityStartBtn");
+  if (scanBtn) { scanBtn.disabled = true; scanBtn.textContent = "Scanning..."; }
 
-    const resp = await fetch("/api/security-scan", { method: "POST" });
+  try {
+    const engineName = document.getElementById("securityEngineSelect")?.selectedOptions[0]?.textContent || "Built-in";
+    progressBar.style.width = "20%";
+    progressText.textContent = `Scanning with ${engineName}...`;
+
+    const selectedEngine = document.getElementById("securityEngineSelect")?.value || "built-in";
+    const resp = await fetch("/api/security-scan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ engine: selectedEngine }),
+    });
     const scanData = await resp.json();
 
     progressBar.style.width = "90%";
@@ -2570,6 +2631,9 @@ async function runSecurityScan() {
       else if (b.hasChanges) securityBaselineStatus[b.serverName] = "changed";
     }
 
+    // Re-enable scan button
+    if (scanBtn) { scanBtn.disabled = false; scanBtn.textContent = "▶ Scan"; }
+
     renderSecurityResults(scanData);
     // Re-render main list — badges only on servers with findings, clean servers get cleared
     renderAll();
@@ -2578,30 +2642,31 @@ async function runSecurityScan() {
     // Clear NEW flags (baselines updated), but check for CHANGED servers
     securityBaselineStatus = {};
     const changedCount = (scanData.baselines || []).filter(b => b.hasChanges && !b.isFirstScan).length;
-    const scanBtn = document.getElementById("securityScanBtn");
+    const sidebarBtn = document.getElementById("securityScanBtn");
 
-    if (changedCount > 0 && scanBtn) {
+    if (changedCount > 0 && sidebarBtn) {
       // Servers changed since last scan — re-shimmer + CHANGED badges
       for (const b of (scanData.baselines || [])) {
         if (b.hasChanges && !b.isFirstScan) securityBaselineStatus[b.serverName] = "changed";
       }
-      scanBtn.classList.add("sec-btn-alert");
-      scanBtn.querySelector(".sec-btn-tooltip")?.remove();
+      sidebarBtn.classList.add("sec-btn-alert");
+      sidebarBtn.querySelector(".sec-btn-tooltip")?.remove();
       const tip = document.createElement("span");
       tip.className = "sec-btn-tooltip";
       tip.textContent = `${changedCount} MCP server${changedCount > 1 ? "s" : ""} changed — click to rescan`;
-      scanBtn.appendChild(tip);
+      sidebarBtn.appendChild(tip);
       renderAll(); // re-render to show CHANGED badges
-    } else if (scanBtn) {
+    } else if (sidebarBtn) {
       // All clear — remove shimmer + tooltip + re-render to clear badges
-      scanBtn.classList.remove("sec-btn-alert");
-      scanBtn.querySelector(".sec-btn-tooltip")?.remove();
+      sidebarBtn.classList.remove("sec-btn-alert");
+      sidebarBtn.querySelector(".sec-btn-tooltip")?.remove();
       renderAll();
     }
 
   } catch (err) {
     progressText.textContent = `Error: ${err.message}`;
     progressBar.classList.add("security-bar-error");
+    if (scanBtn) { scanBtn.disabled = false; scanBtn.textContent = "▶ Scan"; }
   }
 }
 
@@ -2613,7 +2678,7 @@ function renderSecurityResults(scanData) {
 
   progress.classList.add("hidden");
   results.classList.remove("hidden");
-  document.getElementById("securityRescanBtn")?.classList.remove("hidden");
+  // Rescan handled by main security button shimmer alert — no separate rescan button needed
   footer.classList.remove("hidden");
 
   const { severityCounts, totalTools, totalServers, serversConnected, baselines, findings } = scanData;
@@ -2662,8 +2727,8 @@ function renderSecurityResults(scanData) {
     // Group findings by server name
     const byServer = {};
     for (const f of findings) {
-      const parts = (f.sourceName || "").split("/");
-      const server = parts[0] || "unknown";
+      // External scanners set serverName directly; built-in uses sourceName "server/tool" format
+      const server = f.serverName || (f.sourceName || "").split("/")[0] || "unknown";
       if (!byServer[server]) byServer[server] = [];
       byServer[server].push(f);
     }
@@ -2707,9 +2772,71 @@ function renderSecurityResults(scanData) {
       for (const f of deduped) {
         const bc = f.severity === "critical" ? "sec-critical" : f.severity === "high" ? "sec-high" : f.severity === "medium" ? "sec-medium" : "sec-low";
         const countLabel = f.count > 1 ? ` ×${f.count}` : "";
-        html += `<div class="sec-finding-row" data-sec-server="${esc(server)}" data-sec-scope="${esc(scopeId)}">`;
+        html += `<div class="sec-finding-item" data-sec-server="${esc(server)}" data-sec-scope="${esc(scopeId)}">`;
+        html += `<div class="sec-finding-header">`;
         html += `<span class="sec-badge ${bc}" style="font-size:9px;padding:0 4px">${esc(f.severity.charAt(0).toUpperCase())}</span>`;
         html += `<span class="sec-finding-label">${esc(f.name)}${countLabel}</span>`;
+        // Category label (human-readable, not cryptic rule codes)
+        const categoryLabel = {
+          supply_chain: "Supply Chain", prompt_injection: "Prompt Injection",
+          tool_poisoning: "Tool Poisoning", tool_shadowing: "Tool Shadowing",
+          sensitive_access: "Sensitive Access", data_exfiltration: "Data Exfiltration",
+          credential_harvest: "Credentials", code_execution: "Code Execution",
+          command_injection: "Command Injection", suspicious_hook: "Suspicious Hook",
+          persistence: "Persistence", cross_server_ref: "Cross-Server",
+          mcp_config: "MCP Config", external: "Security",
+        }[f.category] || f.category;
+        const ruleId = (f.id && f.id !== "EXT") ? `${f.id} · ` : "";
+        html += `<span class="sec-category-label">${esc(ruleId + categoryLabel)}</span>`;
+        html += `</div>`;
+        // Description
+        if (f.description) {
+          html += `<div class="sec-finding-desc">${esc(f.description)}</div>`;
+        }
+        // Remediation — clickable, copies prompt for Claude Code
+        if (f.matchedText && f.externalScanner) {
+          const engineName = scanData.engineName || f.externalScanner;
+          const serverName = f.serverName || server;
+          const configPath = f.context || "~/.claude/.mcp.json";
+          const prompt = [
+            `I found a security issue in my MCP server "${serverName}" at ${configPath}:`,
+            ``,
+            `Issue: ${f.name} (${categoryLabel})`,
+            `Severity: ${f.severity}`,
+            `${f.description}`,
+            ``,
+            `Detected by: ${engineName} (rule ${f.id})`,
+            `Suggested fix: ${f.matchedText}`,
+            ``,
+            `Please evaluate the root cause of this issue, confirm whether this fix is appropriate for my setup, and guide me through applying it if needed.`,
+          ].join("\n");
+          const promptAttr = esc(prompt).replace(/"/g, "&quot;");
+          html += `<div class="sec-finding-fix sec-fix-clickable" data-fix-prompt="${promptAttr}" title="Click to copy prompt for Claude Code">💡 ${esc(f.matchedText)} <span class="sec-fix-action">Fix with Claude →</span></div>`;
+        } else if (f.matchedText && !f.externalScanner) {
+          // Built-in scanner — also make clickable
+          const prompt = [
+            `I found a security issue in my MCP server "${server}":`,
+            ``,
+            `Issue: ${f.name}`,
+            `Severity: ${f.severity}`,
+            `Matched: ${f.matchedText}`,
+            `Context: ${f.context || ""}`,
+            ``,
+            `Detected by: CCO built-in scanner (rule ${f.id})`,
+            ``,
+            `Please evaluate this finding, explain the risk, and help me fix it if needed.`,
+          ].join("\n");
+          const promptAttr = esc(prompt).replace(/"/g, "&quot;");
+          html += `<div class="sec-finding-fix sec-fix-clickable" data-fix-prompt="${promptAttr}" title="Click to copy prompt for Claude Code">💡 ${esc(f.matchedText.length > 120 ? f.matchedText.slice(0, 120) + "…" : f.matchedText)} <span class="sec-fix-action">Fix with Claude →</span></div>`;
+        }
+        // Source context (file path for external)
+        if (f.context && !f.externalScanner) {
+          html += `<div class="sec-finding-context">${esc(f.context)}</div>`;
+        }
+        // External rule link
+        if (f.externalRuleUrl) {
+          html += `<div class="sec-finding-link"><a href="${esc(f.externalRuleUrl)}" target="_blank">View rule docs →</a></div>`;
+        }
         html += `</div>`;
       }
       html += `</div>`;
@@ -2762,6 +2889,29 @@ function renderSecurityResults(scanData) {
     });
   });
 
+  // "Fix with Claude →" click → copy prompt to clipboard
+  results.querySelectorAll(".sec-fix-clickable").forEach(el => {
+    el.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const prompt = el.dataset.fixPrompt;
+      if (!prompt) return;
+      try {
+        await navigator.clipboard.writeText(prompt);
+        toast("Prompt copied — paste in Claude Code");
+      } catch {
+        // Fallback for non-HTTPS
+        const ta = document.createElement("textarea");
+        ta.value = prompt;
+        ta.style.cssText = "position:fixed;opacity:0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        toast("Prompt copied — paste in Claude Code");
+      }
+    });
+  });
+
   // Server row click → navigate to MCP item
   results.querySelectorAll(".sec-server-row[data-sec-server]").forEach(row => {
     row.addEventListener("click", (e) => {
@@ -2771,7 +2921,8 @@ function renderSecurityResults(scanData) {
   });
 
   const scanTime = new Date(scanData.timestamp).toLocaleString();
-  footerNote.textContent = `${scanTime}`;
+  const engineLabel = scanData.engineName ? `${scanData.engineName} · ` : "";
+  footerNote.textContent = `${engineLabel}${scanTime}`;
 }
 
 /** Save security scan results to server for persistence across sessions. */

@@ -14,7 +14,7 @@ import { scan } from "./scanner.mjs";
 import { moveItem, deleteItem, getValidDestinations } from "./mover.mjs";
 import { countTokens, getMethod } from "./tokenizer.mjs";
 import { introspectServers } from "./mcp-introspector.mjs";
-import { runSecurityScan, checkClaudeAvailable, llmJudge } from "./security-scanner.mjs";
+import { runSecurityScan, checkClaudeAvailable, llmJudge, detectExternalScanners, runExternalScan } from "./security-scanner.mjs";
 
 // ── Update check ─────────────────────────────────────────────────────
 async function checkForUpdate() {
@@ -759,9 +759,67 @@ async function handleRequest(req, res) {
     return json(res, { ok: true, ...status });
   }
 
+  // GET /api/security-scanners — detect installed external scanner engines
+  if (path === "/api/security-scanners" && req.method === "GET") {
+    try {
+      const scanners = await detectExternalScanners();
+      return json(res, { ok: true, scanners });
+    } catch (err) {
+      return json(res, { ok: false, error: err.message }, 500);
+    }
+  }
+
   // POST /api/security-scan — run full security scan (introspect + pattern + baseline)
+  // Accepts optional body: { engine: "cc-audit" | "agentseal" | "built-in" (default) }
   if (path === "/api/security-scan" && req.method === "POST") {
     try {
+      const body = await readBody(req).catch(() => ({}));
+      const engine = body?.engine || "built-in";
+
+      // External scanner engine
+      if (engine !== "built-in") {
+        const claudeDir = join(homedir(), ".claude");
+        const externalResults = await runExternalScan(engine, claudeDir);
+
+        // Merge with introspection data for click-to-navigate
+        if (!cachedData) await freshScan();
+        const mcpItems = cachedData.items.filter(i => i.category === "mcp" && i.mcpConfig);
+
+        // Map external findings to MCP server scope for click-to-navigate
+        for (const finding of externalResults.findings) {
+          // AgentSeal already sets serverName from mcp_results[].name
+          const name = finding.serverName;
+          const matchedServer = name
+            ? mcpItems.find(m => m.name === name)
+            : mcpItems.find(m =>
+                finding.sourceName?.includes(m.name) || finding.context?.includes(m.name)
+              );
+          if (matchedServer) {
+            finding.serverName = matchedServer.name;
+            finding.scopeId = matchedServer.scopeId;
+          }
+        }
+
+        return json(res, {
+          ...externalResults,
+          timestamp: new Date().toISOString(),
+          totalServers: mcpItems.length,
+          serversConnected: mcpItems.length,
+          serversFailed: 0,
+          totalTools: 0,
+          servers: mcpItems.map(m => ({
+            serverName: m.name,
+            scopeId: m.scopeId,
+            status: "external",
+            toolCount: 0,
+            tools: [],
+            findings: externalResults.findings.filter(f => f.serverName === m.name),
+          })),
+          baselines: [],
+        });
+      }
+
+      // Built-in scanner (original behavior)
       if (!cachedData) await freshScan();
 
       // Get all MCP server items from scan data

@@ -1213,6 +1213,25 @@ body {
 .security-note { font-size: 11px; color: var(--fg3); }
 .security-start-btn { margin-top: 8px; font-size: 13px; padding: 7px 18px; }
 
+/* ── Security action bar (engine selector + scan button, always visible) ── */
+.security-action-bar {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 8px 14px; border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+.security-engine-col { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.security-engine-select {
+  font-size: 0.8rem; padding: 4px 8px; border-radius: 5px;
+  background: var(--bg-secondary, var(--bg2)); color: var(--text-primary, var(--fg1));
+  border: 1px solid var(--border-light, var(--border));
+  cursor: pointer; min-width: 0; flex: 1;
+}
+.security-engine-select:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+.security-engine-info { font-size: 0.68rem; color: var(--text-muted, var(--fg3)); white-space: nowrap; }
+.security-engine-info a { color: var(--accent); text-decoration: none; }
+.security-engine-info a:hover { text-decoration: underline; }
+.security-scan-btn { font-size: 0.8rem; padding: 6px 18px; white-space: nowrap; flex-shrink: 0; font-weight: 600; letter-spacing: 0.3px; }
+
 /* ── Progress bar ── */
 .security-progress-text { font-size: 12px; color: var(--fg2); margin-bottom: 8px; }
 .security-progress-bar-wrap { height: 4px; background: var(--bg2); border-radius: 2px; overflow: hidden; }
@@ -1292,6 +1311,58 @@ body {
 .sec-row-name { flex: 1; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .sec-findings-list { padding-left: 20px; }
+
+/* Finding item — expandable card with details */
+.sec-finding-item {
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 100ms;
+  font-size: 11px;
+  border-left: 2px solid transparent;
+  margin-bottom: 2px;
+}
+.sec-finding-item:hover { background: var(--bg-secondary, var(--bg2)); border-left-color: var(--accent); }
+.sec-finding-header { display: flex; align-items: center; gap: 6px; }
+.sec-finding-label { color: var(--text-primary, var(--fg1)); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.sec-finding-tags { display: flex; gap: 3px; margin-left: auto; flex-shrink: 0; }
+.sec-tag {
+  font-size: 9px; padding: 1px 5px; border-radius: 3px;
+  background: var(--bg-tertiary, var(--bg3, #2a2a3a)); color: var(--text-primary, var(--fg1));
+  font-family: monospace; white-space: nowrap; margin-left: auto; flex-shrink: 0;
+}
+.sec-category-label {
+  font-size: 9px; padding: 1px 6px; border-radius: 3px;
+  background: var(--accent-light, rgba(99, 179, 237, 0.15)); color: var(--accent);
+  white-space: nowrap; margin-left: auto; flex-shrink: 0; font-weight: 600;
+}
+.sec-finding-desc {
+  font-size: 11px; color: var(--text-primary, var(--fg1)); line-height: 1.4;
+  margin: 3px 0 0 22px; opacity: 0.9;
+}
+.sec-finding-fix {
+  font-size: 11px; color: var(--accent); line-height: 1.4;
+  margin: 3px 0 0 22px;
+}
+.sec-fix-clickable {
+  cursor: pointer; border-radius: 4px; padding: 2px 6px; margin-left: 18px;
+  transition: background 150ms;
+}
+.sec-fix-clickable:hover { background: var(--accent-light, rgba(99, 179, 237, 0.1)); }
+.sec-fix-action {
+  font-size: 10px; font-weight: 600; opacity: 0; transition: opacity 150ms;
+  margin-left: 6px;
+}
+.sec-fix-clickable:hover .sec-fix-action { opacity: 1; }
+.sec-finding-context {
+  font-size: 10px; color: var(--text-muted, var(--fg3)); font-family: monospace;
+  margin: 2px 0 0 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sec-finding-link { font-size: 10px; margin: 2px 0 0 22px; }
+.sec-finding-link a { color: var(--accent); text-decoration: none; }
+.sec-finding-link a:hover { text-decoration: underline; }
+
+/* Keep old class for backward compat */
 .sec-finding-row {
   display: flex;
   align-items: center;
@@ -1303,7 +1374,6 @@ body {
   font-size: 11px;
 }
 .sec-finding-row:hover { background: var(--bg2); }
-.sec-finding-label { color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── Footer ── */
 .security-footer {
