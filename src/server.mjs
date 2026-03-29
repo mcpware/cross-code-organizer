@@ -6,7 +6,7 @@
 
 import { createServer } from "node:http";
 import { readFile, stat, open } from "node:fs/promises";
-import { join, extname, resolve, dirname } from "node:path";
+import { join, extname, resolve, dirname, sep, isAbsolute } from "node:path";
 import { homedir } from "node:os";
 import { createRequire } from "node:module";
 import https from "node:https";
@@ -47,9 +47,10 @@ const CLAUDE_DIR = join(HOME, ".claude");
 function isPathAllowed(filePath) {
   const resolved = resolve(filePath);
   // Allow paths under ~/.claude/ or under any discovered project repoDir
-  if (resolved.startsWith(CLAUDE_DIR + "/") || resolved === CLAUDE_DIR) return true;
+  // Uses path.sep for cross-platform support (fixes Windows #12)
+  if (resolved.startsWith(CLAUDE_DIR + sep) || resolved === CLAUDE_DIR) return true;
   // Allow paths under HOME (covers repo dirs with .mcp.json, CLAUDE.md etc)
-  if (resolved.startsWith(HOME + "/")) return true;
+  if (resolved.startsWith(HOME + sep)) return true;
   return false;
 }
 
@@ -522,7 +523,7 @@ async function handleRequest(req, res) {
   // POST /api/restore — restore a deleted file (for undo)
   if (path === "/api/restore" && req.method === "POST") {
     const { filePath, content, isDir } = await readBody(req);
-    if (!filePath || !filePath.startsWith("/") || !isPathAllowed(filePath)) {
+    if (!filePath || !isAbsolute(filePath) || !isPathAllowed(filePath)) {
       return json(res, { ok: false, error: "Invalid or disallowed path" }, 400);
     }
     try {
@@ -571,7 +572,7 @@ async function handleRequest(req, res) {
   // GET /api/file-content?path=... — read file content for detail panel
   if (path === "/api/file-content" && req.method === "GET") {
     const filePath = url.searchParams.get("path");
-    if (!filePath || !filePath.startsWith("/") || !isPathAllowed(filePath)) {
+    if (!filePath || !isAbsolute(filePath) || !isPathAllowed(filePath)) {
       return json(res, { ok: false, error: "Invalid or disallowed path" }, 400);
     }
     try {
@@ -688,7 +689,7 @@ async function handleRequest(req, res) {
     let { exportDir } = await readBody(req);
     // Default to ~/.claude/exports/ if no path provided
     if (!exportDir) exportDir = join(CLAUDE_DIR, "exports");
-    if (!exportDir.startsWith("/")) {
+    if (!isAbsolute(exportDir)) {
       return json(res, { ok: false, error: "Invalid exportDir (must be absolute path)" }, 400);
     }
 

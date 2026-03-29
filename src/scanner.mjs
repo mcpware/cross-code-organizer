@@ -538,6 +538,7 @@ async function scanMcpServers(scope) {
             ctime: claudeJsonStat ? claudeJsonStat.birthtime.toISOString().slice(0, 16) : "",
             path: claudeJsonPath,
             mcpConfig: serverConfig,
+            claudeJsonProjectKey: scope.repoDir, // for moveMcp to find the right nesting level (#11)
           });
         }
       }

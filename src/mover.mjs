@@ -262,7 +262,13 @@ async function moveMcp(item, toScopeId, scopes) {
     return { ok: false, error: `Cannot read source .mcp.json: ${fromMcpJson}` };
   }
 
-  const serverConfig = fromContent.mcpServers?.[item.name];
+  // For .claude.json project-scope servers, read from the correct nesting level (#11)
+  let serverConfig;
+  if (item.claudeJsonProjectKey) {
+    serverConfig = fromContent.projects?.[item.claudeJsonProjectKey]?.mcpServers?.[item.name];
+  } else {
+    serverConfig = fromContent.mcpServers?.[item.name];
+  }
   if (!serverConfig) {
     return { ok: false, error: `Server "${item.name}" not found in ${fromMcpJson}` };
   }
@@ -283,8 +289,12 @@ async function moveMcp(item, toScopeId, scopes) {
   // Add to destination
   toContent.mcpServers[item.name] = serverConfig;
 
-  // Remove from source
-  delete fromContent.mcpServers[item.name];
+  // Remove from source — from the correct nesting level
+  if (item.claudeJsonProjectKey) {
+    delete fromContent.projects[item.claudeJsonProjectKey].mcpServers[item.name];
+  } else {
+    delete fromContent.mcpServers[item.name];
+  }
 
   // Write both files
   await mkdir(dirname(toMcpJson), { recursive: true });
