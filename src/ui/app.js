@@ -154,7 +154,7 @@ function setupScopeNotice() {
   if (!tree) return;
   const notice = document.createElement("div");
   notice.className = "scope-notice";
-  notice.innerHTML = `<span class="scope-notice-dismiss" id="scopeNoticeDismiss">✕</span><strong>How scopes work:</strong> Claude Code has two scopes — <strong>Global</strong> and <strong>Project</strong>. Every project inherits directly from Global only. Sibling or nested projects do not inherit from each other now.`;
+  notice.innerHTML = `<span class="scope-notice-dismiss" id="scopeNoticeDismiss">✕</span><strong>How scopes work:</strong> Claude Code has two scopes — <strong>Global</strong> and <strong>Project</strong>. Every project inherits directly from Global only. Sibling or nested projects do not inherit from each other.`;
   tree.parentElement.insertBefore(notice, tree);
   document.getElementById("scopeNoticeDismiss").addEventListener("click", () => {
     localStorage.setItem(NOTICE_KEY, "1");
