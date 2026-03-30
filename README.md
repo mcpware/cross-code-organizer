@@ -82,7 +82,7 @@ Your context window is not 200K tokens. It's 200K minus everything Claude pre-lo
 - Always-loaded vs deferred breakdown
 - @import expansion (sees what CLAUDE.md actually pulls in)
 - 200K / 1M context window toggle
-- Inherited scope breakdown — see exactly what parent scopes contribute
+- Global vs Project breakdown — see exactly what loads from Global vs the current project
 
 ## Keep Your Scopes Clean
 
