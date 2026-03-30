@@ -637,24 +637,26 @@ function renderSidebarScope(scope, overrideChildHtml) {
     .join("");
 
   const isDragMode = uiState._dragCollapsed;
+  // Tree view: show folder structure only (children visible, categories hidden)
+  const isTreeCollapsed = treeView && overrideChildHtml !== "";
   const hasNestedContent = Boolean(categoryRows || childHtml);
   const hasChildren = Boolean(childHtml);
   const isExpanded = hasNestedContent && (searchQuery ? true : uiState.expandedScopes.has(scope.id));
-  // In drag mode: always show children (scope tree), hide categories
-  const showBody = isDragMode ? hasChildren : (isExpanded && hasNestedContent);
+  // In drag mode or tree view: always show children, hide categories
+  const showBody = (isDragMode || isTreeCollapsed) ? hasChildren : (isExpanded && hasNestedContent);
   const icon = SCOPE_ICONS[scope.type] || "📂";
 
   return `
     <div class="s-scope scope-block" data-scope-id="${esc(scope.id)}">
       <div class="s-scope-hdr${scope.id === selectedScopeId ? " active" : ""}" data-scope-id="${esc(scope.id)}">
-        <span class="s-tog${hasNestedContent ? (isExpanded || isDragMode ? "" : " collapsed") : " empty"}">▾</span>
+        <span class="s-tog${hasNestedContent ? (isExpanded || isDragMode || isTreeCollapsed ? "" : " collapsed") : " empty"}">▾</span>
         <span class="s-ico">${icon}</span>
         <span class="s-nm">${esc(scope.name)}</span>
         <span class="s-cnt">${getRecursiveScopeCount(scope.id)}</span>
       </div>
       ${showBody ? `
         <div class="s-scope-body">
-          ${(!isDragMode && categoryRows) ? `<div>${categoryRows}</div>` : ""}
+          ${(!isDragMode && !isTreeCollapsed && categoryRows) ? `<div>${categoryRows}</div>` : ""}
           ${childHtml ? `<div class="s-children">${childHtml}</div>` : ""}
         </div>` : (hasNestedContent && !showBody ? `
         <div class="s-scope-body collapsed">
