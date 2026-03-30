@@ -281,16 +281,12 @@ async function discoverScopes() {
     return a.realPath.localeCompare(b.realPath);
   });
 
-  // Build parent-child relationships based on path nesting
+  // Claude Code has two scopes: User (global) and Project.
+  // Every project's parent is always global — there is no intermediate workspace scope.
+  // Filesystem nesting (e.g. CompanyRepo/api inside CompanyRepo/) does NOT create
+  // inheritance between projects; the sidebar may group them visually but Claude Code
+  // loads each project's .claude/ independently alongside ~/.claude/.
   for (const entry of projectEntries) {
-    // Find parent: the deepest existing scope whose realPath is a prefix of this one
-    let parentId = "global";
-    for (const existing of scopes) {
-      if (existing.repoDir && entry.realPath.startsWith(existing.repoDir + "/")) {
-        parentId = existing.id;
-      }
-    }
-
     scopes.push({
       id: entry.encodedName,
       name: entry.shortName,

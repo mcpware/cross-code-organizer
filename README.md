@@ -93,7 +93,7 @@ Global                    ← loads into EVERY session on your machine
   └─ Project              ← loads only when you're in this directory
 ```
 
-Projects inherit from Global only. Sibling projects do not inherit from each other, and nested directory structures do not create extra inheritance layers — the sidebar groups them visually, but every project's parent is Global.
+Projects inherit from Global only. Sibling projects do not inherit from each other — filesystem nesting does not create extra inheritance layers. CCO may group projects by path for navigation, but Claude Code scope inheritance is always Global → Project only.
 
 Here's the problem: **Claude creates memories and skills in whatever directory you're currently in.** You tell Claude "always use ESM imports" while working in `~/myapp` — that memory is trapped in that project scope. Open a different project, Claude doesn't know it. You tell it again. Now you have the same memory in two places, both eating context tokens.
 
@@ -143,7 +143,7 @@ CCO connects to every MCP server, retrieves actual tool definitions, and runs th
 ## How It Works
 
 1. **Scans** `~/.claude/` — discovers all 11 categories across every scope
-2. **Resolves the scope hierarchy** — determines parent-child relationships from filesystem paths
+2. **Resolves project scopes** — scans projects from filesystem paths, maps them to Claude Code's Global/Project scope model
 3. **Renders a three-panel dashboard** — scope tree, category items, detail panel with content preview
 
 ## Platform Support
