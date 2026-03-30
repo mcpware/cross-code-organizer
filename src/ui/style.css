@@ -958,6 +958,14 @@ body {
 .s-tree-toggle { cursor: pointer; font-size: 0.7rem; opacity: 0.5; margin-left: auto; padding: 0 4px; }
 .s-tree-toggle:hover { opacity: 1; }
 .s-tree-toggle.active { opacity: 1; }
+.rule-bar { padding: 0 16px 6px; }
+.rule-bar-toggle { font-size: 0.68rem; color: var(--text-muted); cursor: pointer; user-select: none; }
+.rule-bar-toggle:hover { color: var(--accent); }
+.rule-bar-content { margin-top: 6px; font-size: 0.68rem; color: var(--text-muted); line-height: 1.7; }
+.rule-bar-content .rule-row { display: flex; gap: 8px; padding: 2px 0; }
+.rule-bar-content .rule-cat { font-weight: 700; color: var(--text-primary); min-width: 70px; flex-shrink: 0; }
+.rule-bar-content .rule-text { color: var(--text-muted); }
+.rule-bar-content .rule-none { opacity: 0.5; }
 .d-effective-wrap { padding: 0 0 8px; }
 .d-effective { font-size: 0.72rem; color: var(--text-muted); line-height: 1.5; padding: 4px 0; }
 .theme-btn.active { background: var(--accent-light); color: var(--accent-text); border-color: var(--accent); }

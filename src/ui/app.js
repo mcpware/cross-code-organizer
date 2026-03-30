@@ -539,6 +539,7 @@ function renderAll() {
   renderSidebar();
   renderContentHeader();
   renderPills();
+  renderRuleBar();
   renderMainContent();
   updateBulkBar();
 
@@ -755,6 +756,41 @@ function renderPills() {
       renderPills();
     });
   }
+}
+
+function renderRuleBar() {
+  const bar = document.getElementById("ruleBar");
+  const toggle = document.getElementById("ruleBarToggle");
+  const content = document.getElementById("ruleBarContent");
+  if (!bar || !toggle || !content) return;
+
+  if (!showEffective || !selectedScopeId || selectedScopeId === "global") {
+    bar.classList.add("hidden");
+    return;
+  }
+
+  bar.classList.remove("hidden");
+
+  // Build rule rows for all categories
+  const rows = CATEGORY_ORDER.map(cat => {
+    const config = CATEGORIES[cat];
+    if (!config) return "";
+    const rule = config.effectiveRule;
+    const noRule = !rule;
+    return `<div class="rule-row${noRule ? " rule-none" : ""}">
+      <span class="rule-cat">${config.icon} ${esc(config.filterLabel)}</span>
+      <span class="rule-text">${esc(rule || "No official scope rule")}</span>
+    </div>`;
+  }).join("");
+
+  content.innerHTML = rows;
+
+  // Toggle handler (re-attach each render since innerHTML may have changed)
+  toggle.onclick = () => {
+    content.classList.toggle("hidden");
+    toggle.querySelector(".ctx-toggle-arrow").textContent =
+      content.classList.contains("hidden") ? "▸" : "▾";
+  };
 }
 
 function renderMainContent() {
