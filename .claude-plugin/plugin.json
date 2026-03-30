@@ -1,7 +1,7 @@
 {
   "name": "claude-code-organizer",
   "version": "0.2.5",
-  "description": "Organize all your Claude Code memories, skills, MCP servers, and hooks — view by scope hierarchy, move between scopes via drag-and-drop",
+  "description": "Organize all your Claude Code memories, skills, MCP servers, and hooks — see what loads globally vs per-project, then move items between scopes",
   "author": {
     "name": "ithiria894",
     "url": "https://github.com/ithiria894"

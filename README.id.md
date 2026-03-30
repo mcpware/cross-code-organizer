@@ -138,7 +138,7 @@ CCO connect ke tiap MCP server, ambil definisi tool yang beneran, terus scan pak
 ## Cara Kerjanya
 
 1. **Scan** `~/.claude/` — nemuin semua 11 kategori di tiap scope
-2. **Resolve hierarki scope** — tentuin hubungan parent-child dari path filesystem
+2. **Maps configs by scope** — memisahkan yang dimuat secara global dari yang khusus untuk project
 3. **Render dashboard tiga panel** — scope tree, item per kategori, detail panel dengan preview konten
 
 ## Platform Support

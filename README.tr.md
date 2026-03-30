@@ -138,7 +138,7 @@ CCO her MCP server'a bağlanıyor, gerçek tool definition'ları çekiyor ve bun
 ## Nasıl Çalışıyor
 
 1. **`~/.claude/` dizinini tarıyor** — 11 kategoriyi tüm scope'larda buluyor
-2. **Scope hiyerarşisini çözüyor** — dosya path'lerinden parent-child ilişkilerini çıkarıyor
+2. **Scope'ları haritalıyor** — global yüklenenlerle sadece project'e özgü olanları ayırıyor
 3. **Üç panelli dashboard açıyor** — scope ağacı, kategori öğeleri, içerik önizlemeli detay paneli
 
 ## Platform Desteği

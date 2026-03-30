@@ -139,7 +139,7 @@ CCO ต่อเข้า MCP server ทุกตัว ดึง tool definitio
 ## ทำงานยังไง
 
 1. **สแกน** `~/.claude/` — ค้นหาครบ 11 category ทุก scope
-2. **สร้าง scope hierarchy** — หาความสัมพันธ์ parent-child จาก filesystem path
+2. **Maps configs by scope — separates what applies globally from what stays project-specific
 3. **เรนเดอร์ dashboard สามส่วน** — scope tree, category items, detail panel พร้อม content preview
 
 ## รองรับ Platform

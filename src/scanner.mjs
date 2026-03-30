@@ -222,7 +222,7 @@ async function resolveEncodedProjectPath(encoded) {
 
 /**
  * Discover all scopes by scanning ~/.claude/projects/ and known repo dirs.
- * Returns an array of scope objects with parent-child relationships.
+ * Returns an array of scope objects (global + projects, all with parentId: "global").
  */
 async function discoverScopes() {
   const scopes = [];

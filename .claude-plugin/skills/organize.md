@@ -26,7 +26,7 @@ This starts a local web dashboard. Open the URL shown in the terminal.
 ## What the dashboard shows
 
 - All memories, skills, MCP servers, hooks, configs, and plugins
-- Organized by scope hierarchy (Global → Workspace → Project)
+- Shows what loads globally vs per-project (Global and Project scopes)
 - Drag-and-drop to move items between scopes
 - Delete items you don't need
 - Search and filter across all categories
