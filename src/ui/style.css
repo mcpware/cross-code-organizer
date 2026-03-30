@@ -955,6 +955,9 @@ body {
 .ib-conflict::before { background: oklch(0.65 0.15 55); }
 .ib-ancestor { color: oklch(0.58 0.14 160); }
 .ib-ancestor::before { background: oklch(0.58 0.14 160); }
+.s-tree-toggle { cursor: pointer; font-size: 0.7rem; opacity: 0.5; margin-left: auto; padding: 0 4px; }
+.s-tree-toggle:hover { opacity: 1; }
+.s-tree-toggle.active { opacity: 1; }
 .d-effective-wrap { padding: 0 0 8px; }
 .d-effective { font-size: 0.72rem; color: var(--text-muted); line-height: 1.5; padding: 4px 0; }
 .theme-btn.active { background: var(--accent-light); color: var(--accent-text); border-color: var(--accent); }

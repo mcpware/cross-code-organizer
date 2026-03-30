@@ -466,8 +466,9 @@ function setupCollapseAll() {
   if (treeBtn) {
     treeBtn.addEventListener("click", () => {
       treeView = !treeView;
+      treeBtn.textContent = treeView ? "☰" : "🌲";
+      treeBtn.title = treeView ? "Switch to flat view" : "Switch to tree view (filesystem structure)";
       treeBtn.classList.toggle("active", treeView);
-      treeBtn.title = treeView ? "Switch to flat view" : "Switch to tree view (shows filesystem structure)";
       renderSidebar();
     });
   }
@@ -569,7 +570,9 @@ function renderSidebar() {
     // This reflects filesystem structure only — not a universal scope inheritance model
     tree.innerHTML = rootScopes.map((scope) => renderSidebarScopeTree(scope)).join("");
   } else {
-    tree.innerHTML = rootScopes.map((scope) => renderSidebarScope(scope)).join("");
+    // Flat mode: all scopes at the same level, no nesting at all
+    const allScopes = (data?.scopes || []).filter(s => scopeVisibleInSidebar(s));
+    tree.innerHTML = allScopes.map((scope) => renderSidebarScope(scope, "")).join("");
   }
 }
 
