@@ -33,7 +33,7 @@ Tiap kali kamu pake Claude Code, ada tiga hal yang terjadi diam-diam:
 
 Tool lain solve ini satu per satu. **CCO solve semuanya sekaligus:**
 
-**Scan** → Liat semua memory, skill, MCP server, rule, command, agent, hook, plugin, plan, dan session. Semua scope. Satu tree.
+**Scan** → Liat semua memory, skill, MCP server, rule, command, agent, hook, plugin, plan, dan session. Semua scope, satu tampilan.
 
 **Cek** → Ketemu duplikat sama item yang salah scope. Context Budget kasih tau apa aja yang makan token. Security Scanner kasih tau mana yang nge-poison tool kamu.
 
@@ -41,9 +41,9 @@ Tool lain solve ini satu per satu. **CCO solve semuanya sekaligus:**
 
 ![Scan, Cek, Benerin — semua di satu dashboard](docs/3panel.png)
 
-<sub>Empat panel jalan bareng: scope tree, daftar MCP server dengan badge keamanan, detail inspector, dan hasil security scan — klik finding mana aja buat langsung loncat ke server-nya</sub>
+<sub>Empat panel jalan bareng: scope list, daftar MCP server dengan badge keamanan, detail inspector, dan hasil security scan — klik finding mana aja buat langsung loncat ke server-nya</sub>
 
-**Beda sama standalone scanner:** Kalau CCO nemu masalah, kamu klik finding-nya dan langsung nyampe di entry MCP server di scope tree. Hapus, pindah, atau inspect config-nya — tanpa ganti tool.
+**Beda sama standalone scanner:** Kalau CCO nemu masalah, kamu klik finding-nya dan langsung nyampe di entry MCP server di scope list. Hapus, pindah, atau inspect config-nya — tanpa ganti tool.
 
 **Mau coba? Paste ini ke Claude Code:**
 
@@ -95,7 +95,7 @@ Nah masalahnya: **Claude bikin memory dan skill di direktori mana pun kamu lagi 
 
 Skill juga sama. Kamu bikin deploy skill di backend repo — masuknya ke scope project itu. Project lain nggak bisa pake. Akhirnya kamu bikin ulang di mana-mana.
 
-**CCO nampilin full scope tree.** Kamu bisa liat persis memory, skill, dan MCP server mana yang ngaruh ke project mana — tinggal drag ke scope yang bener.
+**CCO nampilin full scope list.** Kamu bisa liat persis memory, skill, dan MCP server mana yang ngaruh ke project mana — tinggal drag ke scope yang bener.
 
 ![MCP Server Duplikat](docs/reloaded%20mcp%20form%20diff%20scope.png)
 
@@ -139,7 +139,7 @@ CCO connect ke tiap MCP server, ambil definisi tool yang beneran, terus scan pak
 
 1. **Scan** `~/.claude/` — nemuin semua 11 kategori di tiap scope
 2. **Maps configs by scope** — memisahkan yang dimuat secara global dari yang khusus untuk project
-3. **Render dashboard tiga panel** — scope tree, item per kategori, detail panel dengan preview konten
+3. **Render dashboard** — scope list, item per kategori, detail panel dengan preview konten
 
 ## Platform Support
 

@@ -61,7 +61,7 @@ Or run directly: `npx @mcpware/claude-code-organizer`
 
 | | **CCO** | Standalone scanners | Desktop apps | VS Code extensions |
 |---|:---:|:---:|:---:|:---:|
-| Scope hierarchy (Global > Project) | **Yes** | No | No | Partial |
+| Global vs Project visibility | **Yes** | No | No | Partial |
 | Drag-and-drop between scopes | **Yes** | No | No | No |
 | Security scan → click finding → navigate → delete | **Yes** | Scan only | No | No |
 | Per-item context budget with inheritance | **Yes** | No | No | No |

@@ -33,7 +33,7 @@
 
 其他工具一次幫你搞一樣咋。**CCO 一個 loop 通殺：**
 
-**掃** → 所有記憶、技能、MCP server、規則、指令、agent、hook、plugin、plan、session，所有 scope，一棵樹攤晒俾你睇。
+**掃** → 所有記憶、技能、MCP server、規則、指令、agent、hook、plugin、plan、session，所有 scope，一覽無遺。
 
 **搵** → 邊啲嘢重複咗？邊啲嘢擺錯 scope？Context Budget 話你知邊度食緊你嘅 token。Security Scanner 話你知邊個 server 有問題。
 
@@ -41,9 +41,9 @@
 
 ![掃、搵、修 — 全部喺一個 dashboard](docs/3panel.png)
 
-<sub>四塊 panel 互相配合：scope tree、帶 security badge 嘅 MCP server 列表、詳情 inspector、同 security scan 結果 — 撳任何 finding 直接跳去嗰個 server</sub>
+<sub>四塊 panel 互相配合：scope list、帶 security badge 嘅 MCP server 列表、詳情 inspector、同 security scan 結果 — 撳任何 finding 直接跳去嗰個 server</sub>
 
-**同淨係識 scan 嘅工具有乜分別？** CCO 搵到嘢嗰陣你唔使自己慢慢搵返——撳個 finding，砰，直接跳去 scope tree 入面嗰個 MCP server。要刪要搬要睇 config，就喺嗰度搞，唔使切嚟切去。
+**同淨係識 scan 嘅工具有乜分別？** CCO 搵到嘢嗰陣你唔使自己慢慢搵返——撳個 finding，砰，直接跳去 scope list 入面嗰個 MCP server。要刪要搬要睇 config，就喺嗰度搞，唔使切嚟切去。
 
 **想即刻試？貼呢段入去 Claude Code：**
 
@@ -95,7 +95,7 @@ Global                    ← 你部機每個 session 都會 load
 
 技能一樣。你喺 backend repo 整咗個 deploy skill — 佢落咗嗰個 project scope。其他 project 完全唔知有呢樣嘢。搞到你每個 repo 都重建一次。
 
-**CCO 攤晒成棵 scope tree 俾你睇。** 邊啲記憶影響邊個 project、邊啲 MCP server 擺錯咗 scope，一望就知，然後直接拖去啱嘅位。
+**CCO 攤晒成棵 scope list 俾你睇。** 邊啲記憶影響邊個 project、邊啲 MCP server 擺錯咗 scope，一望就知，然後直接拖去啱嘅位。
 
 ![重複嘅 MCP Server](docs/reloaded%20mcp%20form%20diff%20scope.png)
 
@@ -139,7 +139,7 @@ CCO 會連去你每個 MCP server，攞返實際嘅 tool 定義，然後跑：
 
 1. **掃描** `~/.claude/` — 搵晒全部 11 個類別，跨所有 scope
 2. **拆解 scope 層級** — 由 filesystem 路徑推返出邊個係 parent 邊個係 child
-3. **畫出三欄 dashboard** — scope tree、分類項目、詳情面板連內容預覽
+3. **畫出 dashboard** — scope list、分類項目、詳情面板連內容預覽
 
 ## 邊啲 Platform 用得
 

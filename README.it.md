@@ -41,9 +41,9 @@ Ci sono altri tool che risolvono questi problemi, ma uno alla volta. **CCO li ri
 
 ![Scansiona, Trova, Correggi — tutto in una dashboard](docs/3panel.png)
 
-<sub>Quattro pannelli che lavorano insieme: scope tree, lista server MCP con badge di sicurezza, inspector di dettaglio e finding della scansione — clicca su un finding e vai dritto al server</sub>
+<sub>Quattro pannelli che lavorano insieme: scope list, lista server MCP con badge di sicurezza, inspector di dettaglio e finding della scansione — clicca su un finding e vai dritto al server</sub>
 
-**La differenza rispetto agli scanner standalone:** quando CCO trova qualcosa, ci clicchi sopra e atterri sulla voce del server MCP nello scope tree. Cancellalo, spostalo, guarda la config — senza cambiare tool.
+**La differenza rispetto agli scanner standalone:** quando CCO trova qualcosa, ci clicchi sopra e atterri sulla voce del server MCP nello scope list. Cancellalo, spostalo, guarda la config — senza cambiare tool.
 
 **Per partire — incolla questo in Claude Code:**
 
@@ -140,7 +140,7 @@ CCO si connette a ogni server MCP, prende le definizioni reali dei tool e le fa 
 
 1. **Scansiona** `~/.claude/` — scopre tutte le 11 categorie in ogni scope
 2. **Risolve la gerarchia degli scope** — capisce le relazioni padre-figlio dai path del filesystem
-3. **Mostra una dashboard a tre pannelli** — scope tree, elementi per categoria, pannello di dettaglio con anteprima del contenuto
+3. **Mostra una dashboard** — scope list, elementi per categoria, pannello di dettaglio con anteprima del contenuto
 
 ## Piattaforme supportate
 

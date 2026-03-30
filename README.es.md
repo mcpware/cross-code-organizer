@@ -41,9 +41,9 @@ Otras herramientas resuelven estos problemas de a uno. **CCO los resuelve en un 
 
 ![Escanear, Encontrar, Arreglar — todo en un dashboard](docs/3panel.png)
 
-<sub>Cuatro paneles trabajando juntos: árbol de scopes, lista de servidores MCP con badges de seguridad, inspector de detalle y hallazgos del security scan — haz clic en cualquier hallazgo para navegar directo al servidor</sub>
+<sub>Cuatro paneles trabajando juntos: lista de scopes, lista de servidores MCP con badges de seguridad, inspector de detalle y hallazgos del security scan — haz clic en cualquier hallazgo para navegar directo al servidor</sub>
 
-**La diferencia con los scanners independientes:** Cuando CCO encuentra algo, haces clic en el hallazgo y llegas a la entrada del servidor MCP en el árbol de scopes. Bórralo, muévelo o inspecciona su config — sin cambiar de herramienta.
+**La diferencia con los scanners independientes:** Cuando CCO encuentra algo, haces clic en el hallazgo y llegas a la entrada del servidor MCP en la lista de scopes. Bórralo, muévelo o inspecciona su config — sin cambiar de herramienta.
 
 **Para empezar, pega esto en Claude Code:**
 
@@ -140,7 +140,7 @@ CCO se conecta a cada servidor MCP, obtiene las definiciones reales de los tools
 
 1. **Escanea** `~/.claude/` — descubre las 11 categorías en todos los scopes
 2. **Resuelve la jerarquía de scopes** — determina las relaciones padre-hijo a partir de las rutas del filesystem
-3. **Renderiza un dashboard de tres paneles** — árbol de scopes, elementos por categoría, panel de detalle con preview del contenido
+3. **Renderiza un dashboard** — lista de scopes, elementos por categoría, panel de detalle con preview del contenido
 
 ## Compatibilidad de plataformas
 
