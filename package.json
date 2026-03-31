@@ -1,6 +1,6 @@
 {
   "name": "@mcpware/claude-code-organizer",
-  "version": "0.14.8",
+  "version": "0.14.9",
   "description": "Organize all your Claude Code memories, skills, MCP servers, commands, agents, rules, and hooks — see what loads globally vs per-project, then move items between scopes",
   "type": "module",
   "files": [

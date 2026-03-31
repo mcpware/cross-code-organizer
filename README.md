@@ -61,10 +61,10 @@ Or run directly: `npx @mcpware/claude-code-organizer`
 
 | | **CCO** | Standalone scanners | Desktop apps | VS Code extensions |
 |---|:---:|:---:|:---:|:---:|
-| Global vs Project visibility | **Yes** | No | No | Partial |
-| Move items between scopes | **Yes** | No | No | No |
+| Show Effective (per-category rules) | **Yes** | No | No | No |
+| Move items where they belong | **Yes** | No | No | No |
 | Security scan → click finding → navigate → delete | **Yes** | Scan only | No | No |
-| Per-item context budget with scope breakdown | **Yes** | No | No | No |
+| Per-item context budget breakdown | **Yes** | No | No | No |
 | Undo every action | **Yes** | No | No | No |
 | Bulk operations | **Yes** | No | No | No |
 | Zero-install (`npx`) | **Yes** | Varies | No (Tauri/Electron) | No (VS Code) |
@@ -82,36 +82,30 @@ Your context window is not 200K tokens. It's 200K minus everything Claude pre-lo
 - Always-loaded vs deferred breakdown
 - @import expansion (sees what CLAUDE.md actually pulls in)
 - 200K / 1M context window toggle
-- Global vs Project breakdown — see exactly what loads from Global vs the current project
+- Per-category breakdown — see exactly what loads and where it comes from
 
-## Keep Your Scopes Clean
+## See What Claude Actually Loads
 
-Different categories follow different official rules — there is no single universal inheritance model:
+Claude Code doesn't use one universal rule for everything. Each category has its own:
 
-- **MCP servers**: resolved by `local > project > user` precedence. Same-name servers use the narrower scope.
-- **Agents**: project-level agents override same-name user agents.
-- **Commands**: available from user and project. Same-name conflicts are not reliably supported.
-- **Skills**: available from personal, project, and plugin sources.
-- **Config / Settings**: resolved by precedence chain (`managed > CLI > project local > project shared > user`).
+- **MCP servers**: `local > project > user` — same-name servers use the narrower scope
+- **Agents**: project-level overrides same-name user agents
+- **Commands**: available from user and project — same-name conflicts are not reliably supported
+- **Skills**: available from personal, project, and plugin sources
+- **Config / Settings**: resolved by precedence chain
 
-Click **✦ Show Effective** to see what actually applies in any project — each category resolves by its own rule. Hover any category pill for specifics.
-
-Here's the problem: **Claude creates memories and skills in whatever directory you're currently in.** You tell Claude "always use ESM imports" while working in `~/myapp` — that memory is trapped in that project scope. Open a different project, Claude doesn't know it. You tell it again. Now you have the same memory in two places, both eating context tokens.
-
-Same with skills. You build a deploy skill in your backend repo — it lands in that project's scope. Your other projects can't see it. You end up recreating it everywhere.
-
-**CCO shows every scope in one view.** You can see exactly which memories, skills, and MCP servers affect which projects — then move them to the right scope.
+Click **✦ Show Effective** to see what actually applies in any project. Shadowed items, name conflicts, and ancestor-loaded configs are all surfaced with badges and explanations. Hover any category pill for its specific rule.
 
 ![Duplicate MCP Servers](docs/reloaded%20mcp%20form%20diff%20scope.png)
 
-Teams installed twice, Gmail three times, Playwright three times. You configured them in one scope, Claude reinstalled them in another.
+Teams installed twice, Gmail three times, Playwright three times. You configured them in one place, Claude reinstalled them in another. CCO shows you all of it — then you fix it:
 
-- **Move items between scopes** — Move a memory, skill, or MCP server from Project to Global. Now every project on your machine has it.
-- **Show Effective** — See what actually applies in a project. Each category follows its own official rule: MCP uses local > project > user precedence, agents use project-overrides-user, commands flag unsupported same-name conflicts. Hover any category pill for its specific rule.
-- **Find duplicates instantly** — All items grouped by category across scopes. Three copies of the same memory? Delete the extras.
+- **Show Effective** — See what Claude actually loads for each project. Each category resolves by its own official rule. Items are tagged: `GLOBAL`, `ANCESTOR`, `SHADOWED`, `⚠ CONFLICT`.
+- **Move items** — Move a memory, skill, or MCP server where it belongs. Warnings shown for precedence changes and name conflicts.
+- **Find duplicates** — All items grouped by category. Three copies of the same memory? Delete the extras.
 - **Undo everything** — Every move and delete has an undo button, including MCP JSON entries.
 - **Bulk operations** — Select mode: tick multiple items, move or delete all at once.
-- **Flat or Tree view** — Default flat view lists all scopes equally. Toggle tree view (🌲) to see filesystem structure when debugging config placement.
+- **Flat or Tree view** — Default flat view lists all projects equally. Toggle tree view (🌲) to inspect filesystem structure.
 
 ## Catch Poisoned Tools Before They Catch You
 
