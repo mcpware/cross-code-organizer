@@ -6,6 +6,13 @@
  * move, delete, and undo behaviors.
  */
 
+// Effective resolution logic — loaded from /effective.mjs before app.js
+const { EFFECTIVE_RULES, hasEffectiveRule, getAncestorScopes: _getAncestorScopes,
+        computeEffectiveSets: _computeEffectiveSets, getEffectiveItems } = window.Effective;
+
+// Helper: get effectiveRule for a category (returns string or undefined)
+function getEffectiveRule(category) { return EFFECTIVE_RULES[category] || null; }
+
 let data = null;
 let activeFilters = new Set();
 let selectedItem = null;
@@ -37,28 +44,17 @@ const uiState = {
 const CATEGORY_ORDER = ["skill", "memory", "mcp", "command", "agent", "plan", "rule", "config", "hook", "plugin", "session"];
 
 const CATEGORIES = {
-  memory: { icon: "🧠", label: "Memories", filterLabel: "Memories", group: "memory",
-    effectiveRule: "Global memories are available in all projects; project memories are specific to this project" },
-  skill:  { icon: "⚡", label: "Skills",   filterLabel: "Skills",   group: "skill",
-    effectiveRule: "Available from Personal (~/.claude/skills), Project (.claude/skills), and installed Plugins" },
-  session:{ icon: "💬", label: "Sessions", filterLabel: "Sessions", group: null,
-    effectiveRule: null }, // project-only, no inheritance
-  mcp:    { icon: "🔌", label: "MCP Servers", filterLabel: "MCP",  group: "mcp",
-    effectiveRule: "Resolved by local > project > user — same-name servers use the narrower scope" },
-  command:{ icon: "▶️", label: "Commands", filterLabel: "Commands", group: "command",
-    effectiveRule: "Available from User and Project — same-name conflicts are not supported" },
-  agent:  { icon: "🤖", label: "Agents",   filterLabel: "Agents",  group: "agent",
-    effectiveRule: "Project-level agents override same-name User agents" },
-  plan:   { icon: "📐", label: "Plans",    filterLabel: "Plans",   group: "plan",
-    effectiveRule: null }, // no clear official scope rule
-  rule:   { icon: "📏", label: "Rules",    filterLabel: "Rules",   group: null,
-    effectiveRule: null }, // no clear official scope rule
-  config: { icon: "⚙️", label: "Config",   filterLabel: "Config",  group: null,
-    effectiveRule: "Resolved by precedence: managed > CLI > project local > project shared > user" },
-  hook:   { icon: "🪝", label: "Hooks",    filterLabel: "Hooks",   group: null,
-    effectiveRule: "Configured in settings files — resolved by settings precedence" },
-  plugin: { icon: "🧩", label: "Plugins",  filterLabel: "Plugins", group: null,
-    effectiveRule: null }, // global-only, no inheritance rule
+  memory: { icon: "🧠", label: "Memories", filterLabel: "Memories", group: "memory" },
+  skill:  { icon: "⚡", label: "Skills",   filterLabel: "Skills",   group: "skill" },
+  session:{ icon: "💬", label: "Sessions", filterLabel: "Sessions", group: null },
+  mcp:    { icon: "🔌", label: "MCP Servers", filterLabel: "MCP",  group: "mcp" },
+  command:{ icon: "▶️", label: "Commands", filterLabel: "Commands", group: "command" },
+  agent:  { icon: "🤖", label: "Agents",   filterLabel: "Agents",  group: "agent" },
+  plan:   { icon: "📐", label: "Plans",    filterLabel: "Plans",   group: "plan" },
+  rule:   { icon: "📏", label: "Rules",    filterLabel: "Rules",   group: null },
+  config: { icon: "⚙️", label: "Config",   filterLabel: "Config",  group: null },
+  hook:   { icon: "🪝", label: "Hooks",    filterLabel: "Hooks",   group: null },
+  plugin: { icon: "🧩", label: "Plugins",  filterLabel: "Plugins", group: null },
 };
 
 const ITEM_ICONS = {
@@ -696,7 +692,7 @@ function renderPills() {
     : data?.items || [];
   if (showEffective && selectedScopeId && selectedScopeId !== "global") {
     const globalItems = (data?.items || []).filter(
-      (i) => i.scopeId === "global" && Boolean(CATEGORIES[i.category]?.effectiveRule)
+      (i) => i.scopeId === "global" && Boolean(getEffectiveRule(i.category))
     );
     scopeItems = [...scopeItems, ...globalItems];
   }
@@ -712,13 +708,13 @@ function renderPills() {
     { key: "all", label: "All", icon: "◌", count: scopeTotal, tip: null },
     ...CATEGORY_ORDER.map((category) => {
       const config = CATEGORIES[category] || { icon: "📄", filterLabel: capitalize(category) };
-      const hasRule = Boolean(config.effectiveRule);
+      const hasRule = Boolean(getEffectiveRule(category));
       return {
         key: category,
         label: config.filterLabel,
         icon: config.icon,
         count: scopeCounts[category] || 0,
-        tip: config.effectiveRule || (showEffective ? NO_RULE_TIP : null),
+        tip: getEffectiveRule(category) || (showEffective ? NO_RULE_TIP : null),
         noRule: showEffective && !hasRule,
       };
     }),
@@ -777,7 +773,7 @@ function renderRuleBar() {
   const rows = CATEGORY_ORDER.map(cat => {
     const config = CATEGORIES[cat];
     if (!config) return "";
-    const rule = config.effectiveRule;
+    const rule = getEffectiveRule(cat);
     const noRule = !rule;
     return `<div class="rule-row${noRule ? " rule-none" : ""}">
       <span class="rule-cat">${config.icon} ${esc(config.filterLabel)}</span>
@@ -1096,7 +1092,7 @@ function renderEffectiveBehavior(item) {
           : "This memory is stored in this project's memory directory.";
       break;
     default:
-      why = CATEGORIES[item.category]?.effectiveRule || "";
+      why = getEffectiveRule(item.category) || "";
   }
 
   if (!why) { wrap.classList.add("hidden"); return; }
@@ -2510,82 +2506,37 @@ function findVisibleScopeInTree(scope) {
  * and which items have unresolvable name conflicts (commands).
  * Called whenever showEffective toggles or scope changes.
  */
+// getAncestorScopes — delegated to shared effective.mjs (_getAncestorScopes)
+
 /**
- * Returns scopes whose repoDir is a path ancestor of the given scope's repoDir.
- * e.g. if scopeId is /home/user/company/repo, returns the scope for /home/user/company if it exists.
+ * Wrapper: delegates to shared effective.mjs module for computation,
+ * then stores results in app-level state (effectiveShadowedKeys etc).
  */
-function getAncestorScopes(scopeId) {
-  const scope = getScopeById(scopeId);
-  if (!scope?.repoDir) return [];
-  return (data?.scopes || []).filter(s =>
-    s.repoDir &&
-    s.id !== scopeId &&
-    s.id !== "global" &&
-    scope.repoDir.startsWith(s.repoDir + "/")
-  );
-}
-
 function computeEffectiveSets(scopeId) {
-  effectiveShadowedKeys = new Set();
-  effectiveConflictKeys = new Set();
-  effectiveAncestorKeys = new Set();
-  if (!showEffective || !scopeId || scopeId === "global") return;
-
-  const projectItems = getItemsForScope(scopeId);
-  const globalItems  = getItemsForScope("global");
-
-  // MCP & Agents: narrower scope (project) wins same-name
-  for (const cat of ["mcp", "agent"]) {
-    const projectNames = new Set(
-      projectItems.filter(i => i.category === cat).map(i => i.name)
-    );
-    for (const gi of globalItems.filter(i => i.category === cat)) {
-      if (projectNames.has(gi.name)) effectiveShadowedKeys.add(itemKey(gi));
-    }
+  if (!showEffective || !scopeId || scopeId === "global") {
+    effectiveShadowedKeys = new Set();
+    effectiveConflictKeys = new Set();
+    effectiveAncestorKeys = new Set();
+    return;
   }
-
-  // Commands: both levels available but same-name conflicts are officially unsupported
-  const projCmdNames   = new Set(projectItems.filter(i => i.category === "command").map(i => i.name));
-  const globalCmdNames = new Set(globalItems.filter(i => i.category === "command").map(i => i.name));
-  for (const name of projCmdNames) {
-    if (!globalCmdNames.has(name)) continue;
-    for (const i of [...projectItems, ...globalItems].filter(i => i.category === "command" && i.name === name)) {
-      effectiveConflictKeys.add(itemKey(i));
-    }
-  }
-
-  // Ancestor scopes: scopes whose repoDir is a path parent of this project.
-  // Their config items (especially CLAUDE.md) are ancestor-loaded by Claude Code.
-  const ancestorScopes = getAncestorScopes(scopeId);
-  for (const as of ancestorScopes) {
-    for (const i of getItemsForScope(as.id).filter(i => i.category === "config" || i.category === "memory")) {
-      effectiveAncestorKeys.add(itemKey(i));
-    }
-  }
+  const result = _computeEffectiveSets(scopeId, data?.items || [], data?.scopes || [], itemKey);
+  effectiveShadowedKeys = result.shadowedKeys;
+  effectiveConflictKeys = result.conflictKeys;
+  effectiveAncestorKeys = result.ancestorKeys;
 }
 
 function getVisibleItemsForScope(scopeId) {
   const ownItems = getItemsForScope(scopeId).filter((item) => itemVisibleInMain(item));
   if (!showEffective || scopeId === "global") return ownItems;
 
-  // Only add global items for categories that have an official effective rule
-  const globalItems = getItemsForScope("global").filter((item) => {
-    if (!itemMatchesFilters(item) || !itemMatchesSearch(item)) return false;
-    return Boolean(CATEGORIES[item.category]?.effectiveRule);
-  });
-
-  // Add ancestor scope items (CLAUDE.md + memories from path-parent projects)
-  const ancestorItems = [];
-  for (const as of getAncestorScopes(scopeId)) {
-    for (const item of getItemsForScope(as.id)) {
-      if ((item.category === "config" || item.category === "memory") &&
-          itemMatchesFilters(item) && itemMatchesSearch(item)) {
-        ancestorItems.push(item);
-      }
-    }
-  }
-
-  return [...ownItems, ...globalItems, ...ancestorItems];
+  // Use shared module for effective resolution, then apply UI filters
+  const allEffective = getEffectiveItems(scopeId, data?.items || [], data?.scopes || []);
+  // Filter to non-own items that pass current UI filters
+  const ownKeys = new Set(ownItems.map(i => itemKey(i)));
+  const extra = allEffective.filter(i =>
+    !ownKeys.has(itemKey(i)) && itemMatchesFilters(i) && itemMatchesSearch(i)
+  );
+  return [...ownItems, ...extra];
 }
 
 function itemVisibleInMain(item) {

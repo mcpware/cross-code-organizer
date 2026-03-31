@@ -858,6 +858,16 @@ async function handleRequest(req, res) {
   if (path === "/app.js") {
     return serveFile(res, join(UI_DIR, "app.js"));
   }
+  if (path === "/effective.mjs") {
+    // Serve as browser-compatible IIFE: strip ES exports, wrap in scope
+    // Node.js unit tests import the .mjs directly; browser uses window.Effective
+    try {
+      const content = await readFile(join(import.meta.dirname, "effective.mjs"), "utf-8");
+      const browserCode = "(function(){\n" + content.replace(/^export /gm, "") + "\n})();";
+      res.writeHead(200, { "Content-Type": "application/javascript" });
+      return res.end(browserCode);
+    } catch { res.writeHead(404); return res.end(); }
+  }
 
   // Suppress favicon 404
   if (path === "/favicon.ico") {
