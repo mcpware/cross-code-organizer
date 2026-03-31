@@ -39,11 +39,11 @@ Other tools solve these one at a time. **CCO solves them in one loop:**
 
 **Find** → Spot duplicates and wrong-scope items. Context Budget shows what's eating your tokens. Security Scanner shows what's poisoning your tools.
 
-**Fix** → Move items to the right scope. Delete the duplicate. Click a security finding and land directly on the MCP server entry — delete it, move it, or inspect its config. Done.
+**Fix** → Move eligible items to the right scope. Delete the duplicate. Click a security finding and land directly on the MCP server entry — delete it, move it, or inspect its config. Done.
 
 ![Scan, Find, Fix — all in one dashboard](docs/3panel.png)
 
-<sub>Four panels working together: scope list, MCP server list with security badges, detail inspector, and security scan findings — click any finding to navigate directly to the server</sub>
+<sub>Scope list, MCP servers with security badges, detail inspector, and security scan findings — click any finding to navigate directly to the server</sub>
 
 **The difference from standalone scanners:** When CCO finds something, you click the finding and land on the MCP server entry. Delete it, move it, or inspect its config — without switching tools.
 
@@ -62,7 +62,7 @@ Or run directly: `npx @mcpware/claude-code-organizer`
 | | **CCO** | Standalone scanners | Desktop apps | VS Code extensions |
 |---|:---:|:---:|:---:|:---:|
 | Global vs Project visibility | **Yes** | No | No | Partial |
-| Move between scopes | **Yes** | No | No | No |
+| Move items between scopes | **Yes** | No | No | No |
 | Security scan → click finding → navigate → delete | **Yes** | Scan only | No | No |
 | Per-item context budget with scope breakdown | **Yes** | No | No | No |
 | Undo every action | **Yes** | No | No | No |
@@ -106,7 +106,7 @@ Same with skills. You build a deploy skill in your backend repo — it lands in 
 
 Teams installed twice, Gmail three times, Playwright three times. You configured them in one scope, Claude reinstalled them in another.
 
-- **Move anything between scopes** — Move a memory from Project to Global. Now every project on your machine has it.
+- **Move items between scopes** — Move a memory, skill, or MCP server from Project to Global. Now every project on your machine has it.
 - **Show Effective** — See what actually applies in a project. Each category follows its own official rule: MCP uses local > project > user precedence, agents use project-overrides-user, commands flag unsupported same-name conflicts. Hover any category pill for its specific rule.
 - **Find duplicates instantly** — All items grouped by category across scopes. Three copies of the same memory? Delete the extras.
 - **Undo everything** — Every move and delete has an undo button, including MCP JSON entries.
