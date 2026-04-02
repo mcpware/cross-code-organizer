@@ -8,20 +8,24 @@
 [![GitHub forks](https://img.shields.io/github/forks/mcpware/claude-code-organizer)](https://github.com/mcpware/claude-code-organizer/network/members)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org)
-[![Tests](https://img.shields.io/badge/tests-225%20passing-brightgreen)](https://github.com/mcpware/claude-code-organizer)
+[![Tests](https://img.shields.io/badge/tests-258%20passing-brightgreen)](https://github.com/mcpware/claude-code-organizer)
 [![Zero Telemetry](https://img.shields.io/badge/telemetry-zero-blue)](https://github.com/mcpware/claude-code-organizer)
 [![MCP Security](https://img.shields.io/badge/MCP-Security%20Scanner-red)](https://github.com/mcpware/claude-code-organizer)
+[![Awesome MCP](https://img.shields.io/badge/Awesome-MCP%20Servers-fc60a8?logo=awesomelists&logoColor=white)](https://github.com/punkpeye/awesome-mcp-servers)
+[![Verified Against CC Source](https://img.shields.io/badge/Verified-Claude%20Code%20Source-blueviolet)](https://github.com/mcpware/claude-code-organizer#verified-against-claude-code-source)
 English | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [廣東話](README.zh-HK.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Español](README.es.md) | [Bahasa Indonesia](README.id.md) | [Italiano](README.it.md) | [Português](README.pt-BR.md) | [Türkçe](README.tr.md) | [Tiếng Việt](README.vi.md) | [ไทย](README.th.md)
 
-**Claude Code Organizer (CCO)** is a free, open-source dashboard that lets you manage all Claude Code configuration — memories, skills, MCP servers, settings, agents, rules, and hooks — across global and project scopes. It includes a security scanner for MCP tool poisoning and prompt injection, a per-item context token budget tracker, and bulk cleanup for duplicate configs. All without leaving the window.
+**Claude Code Organizer (CCO)** is a free, open-source dashboard that lets you manage all Claude Code configuration — memories, skills, MCP servers, settings, agents, rules, and hooks — across global and project scopes. It includes a security scanner for MCP tool poisoning and prompt injection, a per-item context token budget tracker, per-project MCP enable/disable controls, and bulk cleanup for duplicate configs. All without leaving the window.
 
-> Scan for poisoned MCP servers. Reclaim wasted context tokens. Find and delete duplicate memories. Move misplaced configs where they belong.
+> **v0.16.0** — Context budget constants and MCP security features now verified against Claude Code's leaked source. MCP Controls lets you disable servers per-project, matching `/mcp disable` behavior exactly.
+
+> Scan for poisoned MCP servers. Reclaim wasted context tokens. Disable MCP servers per-project. Find and delete duplicate memories. Move misplaced configs where they belong.
 
 > **Privacy:** CCO reads Claude Code config files on your machine (global and project-level). Nothing is sent externally. Zero telemetry.
 
 ![Claude Code Organizer Demo](docs/demo.gif)
 
-<sub>225 tests (84 unit + 141 E2E) | Zero dependencies | Demo recorded by AI using [Pagecast](https://github.com/mcpware/pagecast)</sub>
+<sub>258 tests (105 unit + 153 E2E) | Zero dependencies | Demo recorded by AI using [Pagecast](https://github.com/mcpware/pagecast)</sub>
 
 > 100+ stars in 5 days. Built by a CS dropout who found 140 invisible config files controlling Claude and decided no one should have to `cat` each one. First open source project — thank you to everyone who starred, tested, and reported issues.
 
@@ -67,6 +71,8 @@ Or run directly: `npx @mcpware/claude-code-organizer`
 | Move items where they belong | **Yes** | No | No | No |
 | Security scan → click finding → navigate → delete | **Yes** | Scan only | No | No |
 | Per-item context budget breakdown | **Yes** | No | No | No |
+| MCP disable/enable per-project | **Yes** | No | No | No |
+| Verified against Claude Code source | **Yes** | No | No | No |
 | Undo every action | **Yes** | No | No | No |
 | Bulk operations | **Yes** | No | No | No |
 | Zero-install (`npx`) | **Yes** | Varies | No (Tauri/Electron) | No (VS Code) |
@@ -121,6 +127,34 @@ CCO connects to every MCP server, retrieves actual tool definitions, and runs th
 - **NEW / CHANGED / UNREACHABLE** status badges on every MCP item
 
 
+## MCP Controls: Disable Servers Per-Project
+
+Not every MCP server makes sense in every project. Maybe you have 40 global servers but only need 3 for a specific repo.
+
+CCO lets you disable servers per-project — the same thing as running `/mcp disable <name>` in Claude Code, but with a visual interface. Hover any MCP item and click Disable. A confirmation tells you exactly what will happen: every server with that name stops loading in this project, regardless of scope.
+
+Built by reverse-engineering Claude Code's leaked source (`~/.claude.json` → `projects[path].disabledMcpServers`). The behavior matches the official CLI command exactly.
+
+- Inline disable/enable button on every MCP server item
+- Confirmation dialog explaining scope impact
+- MCP Controls panel with searchable server list
+- Per-project — disabling in one project doesn't affect others
+- Persisted to `~/.claude.json` (same file Claude Code uses)
+
+## Verified Against Claude Code Source
+
+When Anthropic's Claude Code source was leaked (April 2026), we used it to verify and improve CCO's accuracy:
+
+**Context Budget** — Fixed autocompact buffer from 33K to the real value of 13K tokens. Added warning threshold (20K) and output token reservation (32K). Your budget estimates are now accurate to what Claude Code actually uses.
+
+**MCP Deduplication** — CCO now detects duplicate servers using the same content-signature algorithm as Claude Code: stdio servers matched by command array, HTTP servers by URL. The backend knows which server wins when names collide across scopes.
+
+**MCP Policy Engine** — Backend support for enterprise allowlist/denylist policy matching Claude Code's `isMcpServerAllowedByPolicy` logic. Denylist has absolute precedence, URL wildcards supported, command-array matching for stdio servers.
+
+**Enterprise MCP Detection** — Detects when `managed-mcp.json` exists (enterprise lockdown mode where only IT-approved servers load). Ready for enterprise deployments.
+
+Every constant, merge rule, and policy check cites the specific source file it was verified against.
+
 ## What It Manages
 
 | Type | View | Move | Delete | Scanned at |
@@ -158,6 +192,8 @@ CCO connects to every MCP server, retrieves actual tool definitions, and runs th
 |---------|:------:|-------------|
 | **Config Export/Backup** | ✅ Done | One-click export all configs to `~/.claude/exports/`, organized by scope |
 | **Security Scanner** | ✅ Done | 60 patterns, 9 deobfuscation techniques, rug-pull detection, NEW/CHANGED/UNREACHABLE badges |
+| **MCP Controls** | ✅ Done | Per-project disable/enable, verified against Claude Code source |
+| **Source-Verified Budget** | ✅ Done | Context budget constants matched to leaked Claude Code source |
 | **Config Health Score** | 📋 Planned | Per-project health score with actionable recommendations |
 | **Cross-Harness Portability** | 📋 Planned | Convert skills/configs between Claude Code ↔ Cursor ↔ Codex ↔ Gemini CLI |
 | **CLI / JSON Output** | 📋 Planned | Run scans headless for CI/CD pipelines — `cco scan --json` |
