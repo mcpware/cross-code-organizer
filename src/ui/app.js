@@ -2825,10 +2825,17 @@ async function openMcpControlsPanel() {
     </div>`).join("");
   }
 
-  // Search-to-add input
+  // Add controls: dropdown + search
   html += `<div class="mcp-controls-add">
+    <div class="mcp-controls-add-row">
+      <select class="mcp-controls-select" id="mcpDisableSelect">
+        <option value="">— Select server —</option>
+        ${availableToDisable.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("")}
+      </select>
+      <button class="mcp-controls-add-btn" id="mcpDisableAddBtn">+ Disable</button>
+    </div>
     <div class="mcp-controls-add-wrap">
-      <input type="text" class="mcp-controls-input" id="mcpDisableInput" placeholder="Search server to disable…" autocomplete="off">
+      <input type="text" class="mcp-controls-input" id="mcpDisableInput" placeholder="or search by name…" autocomplete="off">
       <div class="mcp-controls-suggestions hidden" id="mcpSuggestions"></div>
     </div>
   </div>`;
@@ -2837,6 +2844,20 @@ async function openMcpControlsPanel() {
   html += `<div class="mcp-controls-note">Any server with a disabled name won't load in this project, regardless of scope (global or project). Same as <code>/mcp disable &lt;name&gt;</code> in Claude Code.</div>`;
 
   body.innerHTML = html;
+
+  // Wire up dropdown + add button
+  const select = body.querySelector("#mcpDisableSelect");
+  const addBtn = body.querySelector("#mcpDisableAddBtn");
+  addBtn.addEventListener("click", async () => {
+    const name = select.value;
+    if (!name) return;
+    const result = await fetchJson("/api/mcp-disabled", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project: projectPath, action: "disable", serverName: name }),
+    });
+    if (result.ok) { openMcpControlsPanel(); toast(`${name} disabled`); }
+    else toast("Failed", true);
+  });
 
   // Wire up remove buttons
   body.querySelectorAll(".mcp-controls-remove-btn").forEach(btn => {

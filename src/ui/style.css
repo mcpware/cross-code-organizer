@@ -1465,7 +1465,20 @@ body {
 }
 .mcp-controls-remove-btn:hover { color: var(--danger); background: oklch(0.95 0.04 25); }
 
-.mcp-controls-add { margin-top: 8px; }
+.mcp-controls-add { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.mcp-controls-add-row { display: flex; gap: 6px; }
+.mcp-controls-select {
+  flex: 1; padding: 6px 8px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--bg); color: var(--text-primary);
+  font-size: 0.74rem; font-family: inherit; outline: none; cursor: pointer;
+}
+.mcp-controls-select:focus { border-color: var(--accent); }
+.mcp-controls-add-btn {
+  padding: 6px 14px; border-radius: var(--radius); font-size: 0.7rem; font-weight: 600;
+  border: 1px solid var(--accent-light); background: var(--accent-light); color: var(--accent-text);
+  cursor: pointer; font-family: inherit; transition: all 100ms; white-space: nowrap;
+}
+.mcp-controls-add-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
 .mcp-controls-add-wrap { position: relative; }
 .mcp-controls-input {
   width: 100%; padding: 7px 10px; border-radius: var(--radius);
