@@ -436,9 +436,17 @@ async function handleRequest(req, res) {
     // Small enough that precision doesn't matter.
     const CLAUDEMD_WRAPPER = 100;
 
-    // Autocompact buffer — Claude Code reserves ~33K for compaction (was 45K before 2026).
+    // Autocompact buffer — Claude Code reserves ~13K for compaction (verified from ccsrc autoCompact.ts).
     // This changes occasionally. Don't over-tune it.
-    const AUTOCOMPACT_BUFFER = 33000;
+    const AUTOCOMPACT_BUFFER = 13000;
+
+    // Warning threshold — Claude Code starts warning user when context is getting full.
+    // ccsrc: WARNING_THRESHOLD_BUFFER_TOKENS
+    const WARNING_THRESHOLD_BUFFER = 20000;
+
+    // Max output tokens — reserved for model response.
+    // ccsrc: MAX_OUTPUT_TOKENS_DEFAULT
+    const MAX_OUTPUT_TOKENS = 32000;
 
     // Totals
     const currentLoaded = currentResult.loaded;
@@ -482,13 +490,16 @@ async function handleRequest(req, res) {
       total,
       contextLimit,
       autocompactBuffer: AUTOCOMPACT_BUFFER,
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
+      warningZone: contextLimit - WARNING_THRESHOLD_BUFFER - MAX_OUTPUT_TOKENS,
+      autocompactAt: contextLimit - AUTOCOMPACT_BUFFER - MAX_OUTPUT_TOKENS,
       percentUsed: Math.round((loadedTotal / contextLimit) * 1000) / 10,
       percentWithDeferred: Math.round((total / contextLimit) * 1000) / 10,
       method,
       // Keep old fields for backward compat with existing UI
       currentScope: { items: [...currentLoaded, ...currentDeferred], total: currentLoaded.reduce((s, i) => s + i.tokens, 0) + currentDeferred.reduce((s, i) => s + i.tokens, 0) },
       inherited: { items: [...inheritedLoaded, ...inheritedDeferred], total: inheritedLoaded.reduce((s, i) => s + i.tokens, 0) + inheritedDeferred.reduce((s, i) => s + i.tokens, 0) },
-      systemOverhead: { base: SYSTEM_LOADED, skillBoilerplate: SKILL_BOILERPLATE, claudeMdWrapper: CLAUDEMD_WRAPPER, mcpServers: mcpServerCount, mcpUniqueServers: mcpUniqueCount, mcpEstimate: mcpToolSchemaEstimate, autocompactBuffer: AUTOCOMPACT_BUFFER, total: SYSTEM_LOADED + SYSTEM_DEFERRED + SKILL_BOILERPLATE + CLAUDEMD_WRAPPER + mcpToolSchemaEstimate, confidence: "estimated" },
+      systemOverhead: { base: SYSTEM_LOADED, skillBoilerplate: SKILL_BOILERPLATE, claudeMdWrapper: CLAUDEMD_WRAPPER, mcpServers: mcpServerCount, mcpUniqueServers: mcpUniqueCount, mcpEstimate: mcpToolSchemaEstimate, autocompactBuffer: AUTOCOMPACT_BUFFER, maxOutputTokens: MAX_OUTPUT_TOKENS, warningThresholdBuffer: WARNING_THRESHOLD_BUFFER, total: SYSTEM_LOADED + SYSTEM_DEFERRED + SKILL_BOILERPLATE + CLAUDEMD_WRAPPER + mcpToolSchemaEstimate, confidence: "estimated" },
     });
   }
 
