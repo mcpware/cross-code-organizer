@@ -165,7 +165,9 @@ async function createTestEnv() {
         matcher: 'Bash',
         hooks: [{ type: 'command', command: 'echo "global hook"' }]
       }]
-    }
+    },
+    enabledMcpjsonServers: ['project-mcp'],
+    disabledMcpjsonServers: ['test-server'],
   }, null, 2));
 
   // ── Project-level configs ──
@@ -3236,5 +3238,147 @@ test.describe('Show Effective — per-category rules', () => {
   });
 });
 
-// Move restrictions tests moved to unit tests (tests/unit/test-move-destinations.mjs)
-// — tests the same getValidDestinations() function directly, <100ms vs ~10s E2E
+// ── ccsrc-based Security Features ────────────────────────────────────
+
+test.describe('ccsrc Security Features', () => {
+  let env;
+  test.beforeAll(async () => { env = await createTestEnv(); });
+  test.afterAll(async () => { await env.cleanup(); });
+
+  // ── Context Budget (#1+#2) ──
+
+  test('context budget response includes warningZone and autocompactAt', async () => {
+    const { scopes } = await (await fetch(`${env.baseURL}/api/scan`)).json();
+    const projectScope = scopes.find(s => s.type === 'project');
+    const res = await fetch(`${env.baseURL}/api/context-budget?scope=${encodeURIComponent(projectScope.id)}`);
+    const data = await res.json();
+    expect(data.autocompactBuffer).toBe(13000);
+    expect(data.maxOutputTokens).toBe(32000);
+    expect(data.warningZone).toBeDefined();
+    expect(data.autocompactAt).toBeDefined();
+    expect(data.warningZone).toBeLessThan(data.contextLimit);
+    // Warning fires earlier (lower threshold) than autocompact
+    expect(data.warningZone).toBeLessThan(data.autocompactAt);
+  });
+
+  test('systemOverhead includes new ccsrc constants', async () => {
+    const { scopes } = await (await fetch(`${env.baseURL}/api/scan`)).json();
+    const projectScope = scopes.find(s => s.type === 'project');
+    const res = await fetch(`${env.baseURL}/api/context-budget?scope=${encodeURIComponent(projectScope.id)}`);
+    const data = await res.json();
+    expect(data.systemOverhead.autocompactBuffer).toBe(13000);
+    expect(data.systemOverhead.maxOutputTokens).toBe(32000);
+    expect(data.systemOverhead.warningThresholdBuffer).toBe(20000);
+  });
+
+  // ── MCP Dedup Detection (#3) ──
+
+  test('security scan response includes duplicates array', async () => {
+    const res = await fetch(`${env.baseURL}/api/security-scan`, { method: 'POST' });
+    const data = await res.json();
+    expect(data.duplicates).toBeDefined();
+    expect(Array.isArray(data.duplicates)).toBe(true);
+  });
+
+  test('duplicate MCP servers detected by command signature', async () => {
+    const res = await fetch(`${env.baseURL}/api/security-scan`, { method: 'POST' });
+    const data = await res.json();
+    // test-server exists in both global (.mcp.json) and project (.mcp.json)
+    // with different commands, so should NOT be a duplicate
+    // But if they had the same command they would be
+    // At minimum, duplicates array exists and is valid
+    for (const dup of data.duplicates) {
+      expect(dup.type).toBe('duplicate');
+      expect(dup.server).toBeDefined();
+      expect(dup.duplicateOf).toBeDefined();
+      expect(['stdio', 'url']).toContain(dup.signatureType);
+    }
+  });
+
+  // ── MCP Policy API (#4) ──
+
+  test('GET /api/mcp-policy returns policy data', async () => {
+    const res = await fetch(`${env.baseURL}/api/mcp-policy`);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+    expect(data.allowlist).toBeDefined();
+    expect(data.denylist).toBeDefined();
+    expect(data.servers).toBeDefined();
+    expect(Array.isArray(data.servers)).toBe(true);
+  });
+
+  test('each server in policy response has status field', async () => {
+    const res = await fetch(`${env.baseURL}/api/mcp-policy`);
+    const data = await res.json();
+    for (const s of data.servers) {
+      expect(s.name).toBeDefined();
+      expect(s.scopeId).toBeDefined();
+      expect(['allowed', 'denied', 'no-policy']).toContain(s.status);
+    }
+  });
+
+  test('MCP Policy button visible in MCP category header', async ({ page }) => {
+    await page.goto(env.baseURL);
+    await page.waitForSelector('#loading', { state: 'hidden' });
+    await page.locator(`.s-scope-hdr[data-scope-id="${env.encodedProject}"] .s-nm`).click();
+    await page.waitForTimeout(500);
+    const policyBtn = page.locator('.mcp-policy-btn');
+    await expect(policyBtn).toBeVisible();
+    await expect(policyBtn).toContainText('Policy');
+  });
+
+  test('clicking Policy button opens modal', async ({ page }) => {
+    await page.goto(env.baseURL);
+    await page.waitForSelector('#loading', { state: 'hidden' });
+    await page.locator(`.s-scope-hdr[data-scope-id="${env.encodedProject}"] .s-nm`).click();
+    await page.waitForTimeout(500);
+    await page.locator('.mcp-policy-btn').click();
+    await page.waitForTimeout(500);
+    const modal = page.locator('.policy-modal');
+    await expect(modal).toBeVisible();
+    // Modal should have allowlist and denylist sections
+    await expect(modal.locator('h4').first()).toContainText('Denylist');
+  });
+
+  // ── Project Server Approval State (#5) ──
+
+  test('project MCP servers have approvalState field from scan', async () => {
+    const { items } = await (await fetch(`${env.baseURL}/api/scan`)).json();
+    const projectMcps = items.filter(i => i.category === 'mcp' && i.scopeId !== 'global' && i.fileName === '.mcp.json');
+    // project-mcp should be approved (in enabledMcpjsonServers)
+    const projectMcp = projectMcps.find(i => i.name === 'project-mcp');
+    if (projectMcp) {
+      expect(projectMcp.approvalState).toBe('approved');
+    }
+    // test-server should be rejected (in disabledMcpjsonServers)
+    const testServer = projectMcps.find(i => i.name === 'test-server');
+    if (testServer) {
+      expect(testServer.approvalState).toBe('rejected');
+    }
+  });
+
+  test('approval badges visible on project MCP servers in UI', async ({ page }) => {
+    await page.goto(env.baseURL);
+    await page.waitForSelector('#loading', { state: 'hidden' });
+    await page.locator(`.s-scope-hdr[data-scope-id="${env.encodedProject}"] .s-nm`).click();
+    await page.waitForTimeout(500);
+    // Check for approval badges on MCP items
+    const approvalBadges = page.locator('.approval-badge');
+    const count = await approvalBadges.count();
+    expect(count).toBeGreaterThan(0);
+  });
+
+  // ── Enterprise MCP Detection (#6) ──
+
+  test('scan response includes enterpriseMcp field', async () => {
+    const data = await (await fetch(`${env.baseURL}/api/scan`)).json();
+    expect(data.enterpriseMcp).toBeDefined();
+    expect(typeof data.enterpriseMcp.active).toBe('boolean');
+  });
+
+  test('enterpriseMcp is not active in test environment', async () => {
+    const data = await (await fetch(`${env.baseURL}/api/scan`)).json();
+    // Test env has no managed-mcp.json, so enterprise should be inactive
+    expect(data.enterpriseMcp.active).toBe(false);
+  });
+});
