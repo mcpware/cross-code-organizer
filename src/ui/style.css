@@ -1410,6 +1410,14 @@ body {
 .sec-new { background: #805ad5; color: #fff; }
 .sec-changed { background: #d69e2e; color: #000; }
 .sec-unreachable { background: #718096; color: #fff; }
+.sec-info { background: var(--accent-light); color: var(--accent-text); }
+
+.sec-dup-note { font-size: 0.7rem; color: var(--text-muted); margin-bottom: 6px; line-height: 1.5; }
+.sec-dup-row { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 0.72rem; }
+.sec-dup-server { font-weight: 600; color: var(--text-primary); }
+.sec-dup-arrow { color: var(--text-faint); font-size: 0.65rem; }
+.sec-dup-winner { font-weight: 600; color: var(--accent-text); }
+.sec-dup-sig { font-size: 0.6rem; color: var(--text-faint); background: var(--surface-inset); padding: 1px 5px; border-radius: 3px; }
 
 .security-clean {
   padding: 14px 12px;

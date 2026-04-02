@@ -873,4 +873,63 @@ export async function runSecurityScan(introspectionResults, scanData) {
   };
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// MCP DEDUPLICATION DETECTION (mirrors ccsrc getMcpServerSignature)
+// ══════════════════════════════════════════════════════════════════════
+
+/**
+ * Compute content-based signature for an MCP server config.
+ * Matches Claude Code's dedup logic from ccsrc config.ts:
+ *   - stdio servers: "stdio:" + JSON.stringify([command, ...args])
+ *   - HTTP/SSE servers: "url:" + url
+ *   - Otherwise: null (no dedup possible)
+ */
+function getMcpServerSignature(mcpConfig) {
+  if (!mcpConfig) return null;
+  if (mcpConfig.command) {
+    const cmdArray = [mcpConfig.command, ...(mcpConfig.args || [])];
+    return `stdio:${JSON.stringify(cmdArray)}`;
+  }
+  if (mcpConfig.url) {
+    return `url:${mcpConfig.url}`;
+  }
+  return null;
+}
+
+/**
+ * Detect duplicate MCP servers across scopes.
+ * Claude Code keeps the highest-priority config and drops duplicates.
+ * Priority: project-local > project > user/global (local scope wins).
+ */
+export function detectMcpDuplicates(mcpItems) {
+  const bySignature = new Map();
+
+  for (const item of mcpItems) {
+    if (item.mcpConfig?.disabled) continue;
+    const sig = getMcpServerSignature(item.mcpConfig);
+    if (!sig) continue;
+    if (!bySignature.has(sig)) bySignature.set(sig, []);
+    bySignature.get(sig).push(item);
+  }
+
+  const duplicates = [];
+  for (const [signature, items] of bySignature) {
+    if (items.length < 2) continue;
+    // First item = winner (project-scoped items appear before global in scan order)
+    const winner = items[0];
+    for (let i = 1; i < items.length; i++) {
+      duplicates.push({
+        type: "duplicate",
+        server: items[i].name,
+        serverScope: items[i].scopeId,
+        duplicateOf: winner.name,
+        winnerScope: winner.scopeId,
+        signatureType: signature.startsWith("stdio:") ? "stdio" : "url",
+        signature,
+      });
+    }
+  }
+  return duplicates;
+}
+
 export { deobfuscate, scanText, PATTERNS, loadBaselines, compareBaselines, updateBaselines };

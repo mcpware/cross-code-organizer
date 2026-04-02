@@ -3129,6 +3129,24 @@ function renderSecurityResults(scanData) {
     html += `</div>`;
   }
 
+  // ── Duplicate servers section (ccsrc signature-based dedup) ──
+  if (scanData.duplicates?.length > 0) {
+    html += `<div class="ctx-section">
+      <div class="ctx-section-hdr"><span class="sec-collapse-btn">▾</span> 🔁 Duplicate Servers <span class="sec-badge sec-info">${scanData.duplicates.length}</span></div>
+      <div class="ctx-section-items">
+        <div class="sec-dup-note">Claude Code deduplicates MCP servers by content signature. These servers share the same ${scanData.duplicates[0]?.signatureType === "stdio" ? "command" : "URL"} and only the highest-priority one is loaded.</div>`;
+    for (const dup of scanData.duplicates) {
+      html += `<div class="sec-dup-row">
+        <span class="sec-badge sec-info">DUP</span>
+        <span class="sec-dup-server">${esc(dup.server)}</span>
+        <span class="sec-dup-arrow">→ kept:</span>
+        <span class="sec-dup-winner">${esc(dup.duplicateOf)}</span>
+        <span class="sec-dup-sig">${esc(dup.signatureType)}</span>
+      </div>`;
+    }
+    html += `</div></div>`;
+  }
+
   results.innerHTML = html;
 
   // Bind collapse toggles on server rows

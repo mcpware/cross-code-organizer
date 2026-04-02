@@ -14,7 +14,7 @@ import { scan } from "./scanner.mjs";
 import { moveItem, deleteItem, getValidDestinations } from "./mover.mjs";
 import { countTokens, getMethod } from "./tokenizer.mjs";
 import { introspectServers } from "./mcp-introspector.mjs";
-import { runSecurityScan, checkClaudeAvailable, llmJudge } from "./security-scanner.mjs";
+import { runSecurityScan, checkClaudeAvailable, llmJudge, detectMcpDuplicates } from "./security-scanner.mjs";
 
 // ── Update check ─────────────────────────────────────────────────────
 async function checkForUpdate() {
@@ -818,6 +818,9 @@ async function handleRequest(req, res) {
 
       // Phase 2 + 3: Pattern scan + baseline comparison
       const scanResults = await runSecurityScan(introspectionResults, cachedData);
+
+      // Phase 4: Detect duplicate MCP servers (ccsrc signature-based dedup)
+      scanResults.duplicates = detectMcpDuplicates(mcpItems);
 
       return json(res, scanResults);
     } catch (err) {
