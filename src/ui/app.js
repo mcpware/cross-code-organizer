@@ -322,6 +322,12 @@ function setupItemList() {
       return;
     }
 
+    const policyBtn = event.target.closest(".mcp-policy-btn");
+    if (policyBtn) {
+      openMcpPolicyPanel();
+      return;
+    }
+
     const newSessionBtn = event.target.closest(".new-session-btn");
     if (newSessionBtn) {
       const scope = getScopeById(newSessionBtn.dataset.scopeId);
@@ -350,7 +356,7 @@ function setupItemList() {
     }
 
     const catHdr = event.target.closest(".cat-hdr");
-    if (catHdr && !event.target.closest(".sort-btn") && !event.target.closest(".new-session-btn")) {
+    if (catHdr && !event.target.closest(".sort-btn") && !event.target.closest(".new-session-btn") && !event.target.closest(".mcp-policy-btn")) {
       const key = `${selectedScopeId}::${catHdr.dataset.cat}`;
       if (uiState.collapsedCats.has(key)) uiState.collapsedCats.delete(key);
       else uiState.collapsedCats.add(key);
@@ -854,6 +860,7 @@ function renderMainContent() {
           <span class="cat-hdr-nm">${esc(config.label)}</span>
           <span class="cat-hdr-cnt">${pluralize(catItems.length, "item")}</span>
           ${category === "session" ? `<button type="button" class="new-session-btn" data-scope-id="${esc(scope.id)}" title="Copy command to start a new session">＋ New</button>` : ""}
+          ${category === "mcp" ? `<button type="button" class="mcp-policy-btn" title="Manage MCP allowlist/denylist policy">🛡 Policy</button>` : ""}
           ${category === "mcp" ? "" : `<span class="cat-hdr-sort">
             <button type="button" class="sort-btn${(uiState.sortBy[`${scope.id}::${category}`]?.field === "size") ? " active" : ""}" data-cat="${esc(category)}" data-sort="size">Size ${sortArrow(`${scope.id}::${category}`, "size")}</button>
             <button type="button" class="sort-btn${(uiState.sortBy[`${scope.id}::${category}`]?.field === "date") ? " active" : ""}" data-cat="${esc(category)}" data-sort="date">Date ${sortArrow(`${scope.id}::${category}`, "date")}</button>
@@ -2774,6 +2781,99 @@ function renderMarkdown(text) {
   // Fallback if marked CDN failed to load
   if (typeof marked === "undefined") return `<pre>${esc(content)}</pre>`;
   return marked.parse(content);
+}
+
+// ── MCP Policy Panel ──────────────────────────────────────────────
+
+async function openMcpPolicyPanel() {
+  const res = await fetchJson("/api/mcp-policy");
+  if (!res.ok) { toast("Failed to load MCP policy", true); return; }
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="policy-modal">
+      <div class="policy-modal-hdr">
+        <h3>🛡 MCP Server Policy</h3>
+        <button class="policy-close-btn">✕</button>
+      </div>
+      <div class="policy-modal-body">
+        <div class="policy-section">
+          <h4>Denylist <span class="policy-note">(absolute precedence — blocked regardless of allowlist)</span></h4>
+          <div class="policy-list" id="policyDenylist">
+            ${res.denylist.length === 0 ? '<div class="policy-empty">No denied servers</div>' :
+              res.denylist.map(e => `<div class="policy-entry policy-deny">
+                <span class="policy-entry-name">${esc(e.serverName || e.serverUrl || JSON.stringify(e.serverCommand) || "?")}</span>
+                <span class="policy-entry-tier">${esc(e.tier)}</span>
+                ${e.tier !== "managed" ? `<button class="policy-remove-btn" data-action="remove-deny" data-entry='${esc(JSON.stringify(e))}'>✕</button>` : ""}
+              </div>`).join("")}
+          </div>
+          <div class="policy-add-row">
+            <input type="text" class="policy-add-input" id="denyInput" placeholder="Server name to deny...">
+            <button class="policy-add-btn" data-action="add-deny">+ Deny</button>
+          </div>
+        </div>
+        <div class="policy-section">
+          <h4>Allowlist <span class="policy-note">(if set, only these servers are allowed)</span></h4>
+          <div class="policy-list" id="policyAllowlist">
+            ${res.allowlist.length === 0 ? '<div class="policy-empty">No allowlist set — all servers allowed by default</div>' :
+              res.allowlist.map(e => `<div class="policy-entry policy-allow">
+                <span class="policy-entry-name">${esc(e.serverName || e.serverUrl || JSON.stringify(e.serverCommand) || "?")}</span>
+                <span class="policy-entry-tier">${esc(e.tier)}</span>
+                ${e.tier !== "managed" ? `<button class="policy-remove-btn" data-action="remove-allow" data-entry='${esc(JSON.stringify(e))}'>✕</button>` : ""}
+              </div>`).join("")}
+          </div>
+          <div class="policy-add-row">
+            <input type="text" class="policy-add-input" id="allowInput" placeholder="Server name to allow...">
+            <button class="policy-add-btn" data-action="add-allow">+ Allow</button>
+          </div>
+        </div>
+        <div class="policy-section">
+          <h4>Server Status</h4>
+          <div class="policy-server-list">
+            ${res.servers.map(s => `<div class="policy-server-row">
+              <span class="policy-badge policy-${s.status}">${s.status === "allowed" ? "✅" : s.status === "denied" ? "❌" : "⚠️"}</span>
+              <span class="policy-server-name">${esc(s.name)}</span>
+              <span class="policy-server-status">${esc(s.status)}</span>
+            </div>`).join("")}
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  // Close handlers
+  overlay.querySelector(".policy-close-btn").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+
+  // Remove entry handlers
+  overlay.querySelectorAll(".policy-remove-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const action = btn.dataset.action;
+      const rawEntry = JSON.parse(btn.dataset.entry);
+      const entry = {};
+      if (rawEntry.serverName) entry.serverName = rawEntry.serverName;
+      if (rawEntry.serverUrl) entry.serverUrl = rawEntry.serverUrl;
+      if (rawEntry.serverCommand) entry.serverCommand = rawEntry.serverCommand;
+      const result = await fetchJson("/api/mcp-policy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, entry }) });
+      if (result.ok) { overlay.remove(); openMcpPolicyPanel(); toast("Policy updated"); }
+      else toast("Failed to update policy", true);
+    });
+  });
+
+  // Add entry handlers
+  overlay.querySelectorAll(".policy-add-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const action = btn.dataset.action;
+      const input = action.includes("deny") ? overlay.querySelector("#denyInput") : overlay.querySelector("#allowInput");
+      const name = input.value.trim();
+      if (!name) return;
+      const result = await fetchJson("/api/mcp-policy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, entry: { serverName: name } }) });
+      if (result.ok) { overlay.remove(); openMcpPolicyPanel(); toast("Policy updated"); }
+      else toast("Failed to update policy", true);
+    });
+  });
 }
 
 function cssEscape(value) {

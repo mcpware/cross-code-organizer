@@ -1148,3 +1148,80 @@ export async function scan() {
 
   return { scopes, items: allItems, counts };
 }
+
+/**
+ * Scan MCP allowlist/denylist policy from settings files.
+ * Returns structured policy data for the policy editor UI.
+ */
+export async function scanMcpPolicy() {
+  const settingsFiles = [
+    { path: join(HOME, ".claude", "settings.json"), tier: "user" },
+    { path: join(HOME, ".claude", "settings.local.json"), tier: "local" },
+    { path: "/etc/claude-code/managed-settings.json", tier: "managed" },
+  ];
+
+  const allowlist = [];
+  const denylist = [];
+
+  for (const { path: filePath, tier } of settingsFiles) {
+    try {
+      const raw = await readFile(filePath, "utf-8");
+      const settings = JSON.parse(raw);
+
+      if (Array.isArray(settings.allowedMcpServers)) {
+        for (const entry of settings.allowedMcpServers) {
+          allowlist.push({ ...entry, source: filePath, tier });
+        }
+      }
+      if (Array.isArray(settings.deniedMcpServers)) {
+        for (const entry of settings.deniedMcpServers) {
+          denylist.push({ ...entry, source: filePath, tier });
+        }
+      }
+    } catch {
+      // File doesn't exist or invalid JSON — skip
+    }
+  }
+
+  return { allowlist, denylist };
+}
+
+/**
+ * Check if an MCP server is allowed by the current policy.
+ * Mirrors ccsrc isMcpServerAllowedByPolicy logic:
+ *   - Denylist has absolute precedence
+ *   - Allowlist: undefined = all allowed, empty [] = block all
+ *   - Match by serverName, serverCommand, or serverUrl
+ */
+export function checkMcpPolicy(serverName, mcpConfig, policy) {
+  // Check denylist first (absolute precedence)
+  for (const entry of policy.denylist) {
+    if (entry.serverName && entry.serverName === serverName) return "denied";
+    if (entry.serverCommand && mcpConfig?.command) {
+      const cmd = [mcpConfig.command, ...(mcpConfig.args || [])];
+      if (JSON.stringify(entry.serverCommand) === JSON.stringify(cmd)) return "denied";
+    }
+    if (entry.serverUrl && mcpConfig?.url) {
+      const pattern = entry.serverUrl.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+      if (new RegExp(`^${pattern}$`).test(mcpConfig.url)) return "denied";
+    }
+  }
+
+  // No allowlist = all allowed
+  if (policy.allowlist.length === 0) return "no-policy";
+
+  // Check allowlist
+  for (const entry of policy.allowlist) {
+    if (entry.serverName && entry.serverName === serverName) return "allowed";
+    if (entry.serverCommand && mcpConfig?.command) {
+      const cmd = [mcpConfig.command, ...(mcpConfig.args || [])];
+      if (JSON.stringify(entry.serverCommand) === JSON.stringify(cmd)) return "allowed";
+    }
+    if (entry.serverUrl && mcpConfig?.url) {
+      const pattern = entry.serverUrl.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+      if (new RegExp(`^${pattern}$`).test(mcpConfig.url)) return "allowed";
+    }
+  }
+
+  return "denied"; // Allowlist exists but server not in it
+}

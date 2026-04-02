@@ -10,7 +10,7 @@ import { join, extname, resolve, dirname, sep, isAbsolute } from "node:path";
 import { homedir } from "node:os";
 import { createRequire } from "node:module";
 import https from "node:https";
-import { scan } from "./scanner.mjs";
+import { scan, scanMcpPolicy, checkMcpPolicy } from "./scanner.mjs";
 import { moveItem, deleteItem, getValidDestinations } from "./mover.mjs";
 import { countTokens, getMethod } from "./tokenizer.mjs";
 import { introspectServers } from "./mcp-introspector.mjs";
@@ -794,6 +794,61 @@ async function handleRequest(req, res) {
       });
     } catch (err) {
       return json(res, { ok: false, error: `Export failed: ${err.message}` }, 400);
+    }
+  }
+
+  // ── MCP Policy API ─────────────────────────────────────────────────
+
+  // GET /api/mcp-policy — return allowlist/denylist + per-server policy status
+  if (path === "/api/mcp-policy" && req.method === "GET") {
+    try {
+      if (!cachedData) await freshScan();
+      const policy = await scanMcpPolicy();
+      const mcpItems = cachedData.items.filter(i => i.category === "mcp" && i.mcpConfig);
+      const serverStatuses = mcpItems.map(item => ({
+        name: item.name,
+        scopeId: item.scopeId,
+        status: checkMcpPolicy(item.name, item.mcpConfig, policy),
+      }));
+      return json(res, { ok: true, ...policy, servers: serverStatuses });
+    } catch (err) {
+      return json(res, { ok: false, error: err.message }, 500);
+    }
+  }
+
+  // POST /api/mcp-policy — add/remove allowlist or denylist entries in user settings
+  if (path === "/api/mcp-policy" && req.method === "POST") {
+    try {
+      const body = await readBody(req);
+      const { action, entry } = body;
+      if (!action || !entry) return json(res, { ok: false, error: "Missing action or entry" }, 400);
+
+      const settingsPath = join(homedir(), ".claude", "settings.json");
+      let settings = {};
+      try { settings = JSON.parse(await readFile(settingsPath, "utf-8")); } catch { /* new file */ }
+
+      const field = action.includes("allow") ? "allowedMcpServers" : "deniedMcpServers";
+      if (!Array.isArray(settings[field])) settings[field] = [];
+
+      if (action.startsWith("add-")) {
+        // Avoid duplicate entries
+        const entryJson = JSON.stringify(entry);
+        if (!settings[field].some(e => JSON.stringify(e) === entryJson)) {
+          settings[field].push(entry);
+        }
+      } else if (action.startsWith("remove-")) {
+        const entryJson = JSON.stringify(entry);
+        settings[field] = settings[field].filter(e => JSON.stringify(e) !== entryJson);
+      } else {
+        return json(res, { ok: false, error: `Unknown action: ${action}` }, 400);
+      }
+
+      const { writeFile: writeFileFs } = await import("node:fs/promises");
+      await writeFileFs(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+      cachedData = null; // invalidate cache
+      return json(res, { ok: true });
+    } catch (err) {
+      return json(res, { ok: false, error: err.message }, 500);
     }
   }
 
