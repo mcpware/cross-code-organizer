@@ -285,23 +285,25 @@ function setupItemList() {
   itemList.addEventListener("click", (event) => {
     const actionBtn = event.target.closest(".act-btn");
     if (actionBtn) {
-      const itemEl = actionBtn.closest(".item");
-      const item = getItemByKey(itemEl?.dataset.itemKey);
-      if (!item) return;
-
+      // MCP toggle doesn't need the item object — handle first
       if (actionBtn.dataset.action === "mcp-toggle") {
         const mcpName = actionBtn.dataset.mcpName;
         const scope = getScopeById(selectedScopeId);
         if (!scope?.repoDir) return;
         const isCurrentlyDisabled = mcpDisabledNames.has(mcpName);
         if (isCurrentlyDisabled) {
-          // Enable — no confirmation needed
           toggleMcpDisabled(scope.repoDir, mcpName, "enable");
         } else {
-          // Disable — show confirmation
           showMcpDisableConfirm(scope, mcpName);
         }
-      } else if (actionBtn.dataset.action === "move") {
+        return;
+      }
+
+      const itemEl = actionBtn.closest(".item");
+      const item = getItemByKey(itemEl?.dataset.itemKey);
+      if (!item) return;
+
+      if (actionBtn.dataset.action === "move") {
         openMoveModal(item);
       } else if (actionBtn.dataset.action === "open") {
         openInEditor(item.path);
