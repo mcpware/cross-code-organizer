@@ -981,7 +981,7 @@ function renderItem(item) {
   const actions = (item.locked || isFromGlobal) ? (mcpToggleBtn ? `<span class="item-actions">${mcpToggleBtn}</span>` : "") : `
     <span class="item-actions">
       ${(canMoveItem(item) || item.locked) ? `<button type="button" class="act-btn act-move" data-action="move">Move</button>` : ""}
-      <button type="button" class="act-btn act-open" data-action="open">Open</button>
+      ${item.category !== "mcp" ? `<button type="button" class="act-btn act-open" data-action="open">Open</button>` : ""}
       ${canDeleteItem(item) ? `<button type="button" class="act-btn act-del" data-action="delete">Del</button>` : ""}
       ${mcpToggleBtn}
     </span>`;
