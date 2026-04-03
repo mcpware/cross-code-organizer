@@ -79,43 +79,52 @@
       </div>
 
       <div class="detail-body">
-        <div class="d-info-grid">
-          <div class="d-info-cell">
-            <span class="d-info-label">Scope</span>
-            <span class="d-info-val" id="detailScope">—</span>
-          </div>
-          <div class="d-info-cell">
-            <span class="d-info-label">Type</span>
-            <span class="d-info-val" id="detailType">—</span>
-          </div>
-          <div class="d-info-cell">
-            <span class="d-info-label">Size</span>
-            <span class="d-info-val" id="detailSize">—</span>
-          </div>
-        </div>
+        <!-- Frontmatter config — dynamically populated per category -->
+        <div class="d-item-config hidden" id="detailItemConfig"></div>
 
-        <div class="d-desc-wrap">
-          <span class="d-info-label">Description</span>
-          <div class="d-desc" id="detailDesc">Select an item to inspect its metadata and preview.</div>
+        <!-- Collapsible metadata -->
+        <div class="d-meta-toggle" id="detailMetaToggle">
+          <span class="d-meta-arrow">▸</span> Metadata <span class="d-meta-hint">(scope, size, dates…)</span>
         </div>
-
-        <div class="d-effective-wrap hidden" id="detailEffective">
-          <span class="d-info-label">Why it applies</span>
-          <div class="d-effective" id="detailEffectiveText">—</div>
-        </div>
-
-        <div class="d-info-grid" id="detailDates">
-          <div class="d-info-cell">
-            <span class="d-info-label">Created</span>
-            <span class="d-info-val">—</span>
+        <div class="d-meta-body hidden" id="detailMetaBody">
+          <div class="d-info-grid">
+            <div class="d-info-cell">
+              <span class="d-info-label">Scope</span>
+              <span class="d-info-val" id="detailScope">—</span>
+            </div>
+            <div class="d-info-cell">
+              <span class="d-info-label">Type</span>
+              <span class="d-info-val" id="detailType">—</span>
+            </div>
+            <div class="d-info-cell">
+              <span class="d-info-label">Size</span>
+              <span class="d-info-val" id="detailSize">—</span>
+            </div>
           </div>
-          <div class="d-info-cell">
-            <span class="d-info-label">Modified</span>
-            <span class="d-info-val">—</span>
-          </div>
-        </div>
 
-        <div class="d-path" id="detailPath">—</div>
+          <div class="d-desc-wrap">
+            <span class="d-info-label">Description</span>
+            <div class="d-desc" id="detailDesc">Select an item to inspect its metadata and preview.</div>
+          </div>
+
+          <div class="d-effective-wrap hidden" id="detailEffective">
+            <span class="d-info-label">Why it applies</span>
+            <div class="d-effective" id="detailEffectiveText">—</div>
+          </div>
+
+          <div class="d-info-grid" id="detailDates">
+            <div class="d-info-cell">
+              <span class="d-info-label">Created</span>
+              <span class="d-info-val">—</span>
+            </div>
+            <div class="d-info-cell">
+              <span class="d-info-label">Modified</span>
+              <span class="d-info-val">—</span>
+            </div>
+          </div>
+
+          <div class="d-path" id="detailPath">—</div>
+        </div>
 
         <div class="d-field d-field-preview">
           <div class="d-preview" id="previewContent">Select an item to preview</div>

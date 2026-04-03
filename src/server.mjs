@@ -629,6 +629,26 @@ async function handleRequest(req, res) {
     }
   }
 
+  // POST /api/save-frontmatter — write updated markdown file content (skills, agents, memories)
+  if (path === "/api/save-frontmatter" && req.method === "POST") {
+    try {
+      const body = await readBody(req);
+      const { path: filePath, content } = body;
+      if (!filePath || !isAbsolute(filePath) || !isPathAllowed(filePath)) {
+        return json(res, { ok: false, error: "Invalid or disallowed path" }, 400);
+      }
+      if (!filePath.endsWith(".md")) {
+        return json(res, { ok: false, error: "Only .md files can be updated" }, 400);
+      }
+      const { writeFile: wf } = await import("node:fs/promises");
+      await wf(filePath, content, "utf-8");
+      cachedData = null;
+      return json(res, { ok: true });
+    } catch (err) {
+      return json(res, { ok: false, error: err.message }, 500);
+    }
+  }
+
   // GET /api/session-preview?path=... — parse JSONL session into structured conversation
   if (path === "/api/session-preview" && req.method === "GET") {
     const filePath = url.searchParams.get("path");

@@ -216,6 +216,8 @@ function setupSidebarTree() {
       expandScopePath(selectedScopeId);
       if (isContextBudgetOpen()) {
         openContextBudget(selectedScopeId);
+      } else if (!document.getElementById("mcpControlsPanel").classList.contains("hidden")) {
+        openMcpControlsPanel();
       }
       const cat = catRow.dataset.cat;
       if (activeFilters.size === 1 && activeFilters.has(cat)) {
@@ -246,6 +248,8 @@ function setupSidebarTree() {
     expandScopePath(selectedScopeId);
     if (isContextBudgetOpen()) {
       openContextBudget(selectedScopeId);
+    } else if (!document.getElementById("mcpControlsPanel").classList.contains("hidden")) {
+      openMcpControlsPanel();
     } else if (selectedItem && selectedItem.scopeId !== selectedScopeId) {
       closeDetail();
     }
@@ -418,6 +422,17 @@ function setupDetailPanel() {
     document.getElementById("costBreakdown").classList.add("hidden");
     document.querySelector(".detail-body").classList.remove("hidden");
   });
+
+  // Metadata collapsible toggle
+  const metaToggle = document.getElementById("detailMetaToggle");
+  const metaBody = document.getElementById("detailMetaBody");
+  if (metaToggle && metaBody) {
+    metaToggle.addEventListener("click", () => {
+      metaBody.classList.toggle("hidden");
+      metaToggle.classList.toggle("open");
+      metaToggle.querySelector(".d-meta-arrow").textContent = metaBody.classList.contains("hidden") ? "▸" : "▾";
+    });
+  }
 }
 
 function formatTokenCount(n) {
@@ -1183,6 +1198,9 @@ function renderDetailPanel(resetPreview = false) {
   // Why it applies (Effective Behavior section)
   renderEffectiveBehavior(selectedItem);
 
+  // Frontmatter config (model, when_to_use, description, maxTurns etc.)
+  renderItemConfig(selectedItem);
+
   // CC Actions — contextual prompt buttons
   renderCcActions(selectedItem);
 
@@ -1279,6 +1297,142 @@ function renderEffectiveBehavior(item) {
   if (!why) { wrap.classList.add("hidden"); return; }
   wrap.classList.remove("hidden");
   text.textContent = why;
+}
+
+// ── Item Config (frontmatter fields for skills, agents, memories) ─────────────
+
+const ITEM_CONFIG_FIELDS = {
+  skill: [
+    { key: "model", label: "Model", type: "select", options: ["", "opus", "sonnet", "haiku", "inherit"], labels: ["(not set) — uses default model", "opus", "sonnet", "haiku", "inherit"], tooltip: "When set, Claude Code uses this model instead of your session default when running this skill. Official SKILL.md frontmatter field." },
+    { key: "when_to_use", label: "When to use", type: "text", placeholder: "(not set) — describe when AI should auto-trigger this skill", tooltip: "Claude Code may auto-invoke skills based on context. Setting this gives more specific guidance on when this skill should be triggered." },
+  ],
+  agent: [
+    { key: "model", label: "Model", type: "select", options: ["", "opus", "sonnet", "haiku", "inherit"], labels: ["(not set) — uses default model", "opus", "sonnet", "haiku", "inherit"], tooltip: "When set, Claude Code uses this model instead of your session default when running this agent." },
+    { key: "maxTurns", label: "Max turns", type: "number", placeholder: "(not set) — no limit", tooltip: "Maximum number of agentic turns before the agent stops. Prevents runaway agents from burning tokens indefinitely." },
+  ],
+  memory: [
+    { key: "description", label: "Description", type: "text", placeholder: "(not set) — one-line summary for Claude to decide relevance", tooltip: "Claude Code uses this to decide whether this memory is relevant to the current conversation. A clear description improves recall accuracy." },
+  ],
+};
+
+let _itemConfigTimers = {};
+
+function getItemFilePath(item) {
+  if (item.category === "skill") return `${item.path}/SKILL.md`;
+  if (item.category === "agent") return `${item.path}`;
+  if (item.category === "memory") return item.path;
+  return null;
+}
+
+async function renderItemConfig(item) {
+  const wrap = document.getElementById("detailItemConfig");
+  if (!wrap) return;
+
+  const fields = item ? ITEM_CONFIG_FIELDS[item.category] : null;
+  if (!fields) { wrap.classList.add("hidden"); wrap.innerHTML = ""; return; }
+
+  const filePath = getItemFilePath(item);
+  if (!filePath) { wrap.classList.add("hidden"); return; }
+
+  // Read file to get current frontmatter values
+  let fm = {};
+  try {
+    const res = await fetchJson(`/api/file-content?path=${encodeURIComponent(filePath)}`);
+    if (!res.ok) { wrap.classList.add("hidden"); return; }
+    fm = parseFrontmatter(res.content);
+  } catch { wrap.classList.add("hidden"); return; }
+
+  // Build HTML
+  let html = "";
+  for (const field of fields) {
+    html += `<div class="d-item-config-row">`;
+    html += `<span class="d-info-label" data-tooltip="${esc(field.tooltip)}">${esc(field.label)}</span>`;
+
+    if (field.type === "select") {
+      html += `<select class="d-item-select" data-fm-key="${esc(field.key)}" data-fm-path="${esc(filePath)}">`;
+      for (let i = 0; i < field.options.length; i++) {
+        const val = field.options[i];
+        const label = field.labels?.[i] || val;
+        const sel = (fm[field.key] || "") === val ? " selected" : "";
+        html += `<option value="${esc(val)}"${sel}>${esc(label)}</option>`;
+      }
+      html += `</select>`;
+    } else if (field.type === "number") {
+      const val = fm[field.key] || "";
+      html += `<input type="number" class="d-item-input d-item-number" data-fm-key="${esc(field.key)}" data-fm-path="${esc(filePath)}" value="${esc(val)}" placeholder="${esc(field.placeholder || "")}" min="1">`;
+    } else {
+      const val = fm[field.key] || "";
+      html += `<input type="text" class="d-item-input" data-fm-key="${esc(field.key)}" data-fm-path="${esc(filePath)}" value="${esc(val)}" placeholder="${esc(field.placeholder || "")}">`;
+    }
+    html += `</div>`;
+  }
+
+  wrap.innerHTML = html;
+  wrap.classList.remove("hidden");
+
+  // Bind events
+  wrap.querySelectorAll("select[data-fm-key]").forEach(sel => {
+    sel.addEventListener("change", () => saveFrontmatterField(sel.dataset.fmPath, sel.dataset.fmKey, sel.value));
+  });
+  wrap.querySelectorAll("input[data-fm-key]").forEach(inp => {
+    inp.addEventListener("input", () => {
+      const k = inp.dataset.fmKey;
+      clearTimeout(_itemConfigTimers[k]);
+      _itemConfigTimers[k] = setTimeout(() => saveFrontmatterField(inp.dataset.fmPath, inp.dataset.fmKey, inp.value), 600);
+    });
+  });
+}
+
+function parseFrontmatter(content) {
+  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) return {};
+  const fm = {};
+  for (const line of match[1].split("\n")) {
+    const colon = line.indexOf(":");
+    if (colon < 1) continue;
+    const key = line.slice(0, colon).trim();
+    const val = line.slice(colon + 1).trim();
+    fm[key] = val;
+  }
+  return fm;
+}
+
+async function saveFrontmatterField(filePath, key, value) {
+  try {
+    const res = await fetchJson(`/api/file-content?path=${encodeURIComponent(filePath)}`);
+    if (!res.ok) return;
+
+    let content = res.content;
+    const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+
+    if (!fmMatch) {
+      const newFm = value ? `---\n${key}: ${value}\n---\n` : "";
+      content = newFm + content;
+    } else {
+      let fmBody = fmMatch[1];
+      const lineRegex = new RegExp(`^${key}:.*$`, "m");
+
+      if (value) {
+        if (lineRegex.test(fmBody)) {
+          fmBody = fmBody.replace(lineRegex, `${key}: ${value}`);
+        } else {
+          fmBody += `\n${key}: ${value}`;
+        }
+      } else {
+        fmBody = fmBody.replace(lineRegex, "").replace(/\n{2,}/g, "\n").trim();
+      }
+      content = `---\n${fmBody}\n---` + content.slice(fmMatch[0].length);
+    }
+
+    await fetchJson("/api/save-frontmatter", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: filePath, content }),
+    });
+    toast(`Updated ${key} for ${selectedItem?.name || "item"}`);
+  } catch (err) {
+    toast(`Failed to save: ${err.message}`, true);
+  }
 }
 
 function renderCcActions(item) {

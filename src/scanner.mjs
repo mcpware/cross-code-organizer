@@ -624,19 +624,26 @@ async function scanMcpServers(scope) {
 
   // Add approval state for project-scoped servers from .mcp.json
   // Mirrors ccsrc getProjectMcpServerStatus: approved/rejected/pending
+  // CC merges settings from multiple sources; read both settings.json and
+  // settings.local.json then merge (local wins for enableAllProjectMcpServers).
   if (scope.id !== "global") {
     try {
-      const userSettingsRaw = await safeReadFile(join(CLAUDE_DIR, "settings.json"));
-      if (userSettingsRaw) {
-        const userSettings = JSON.parse(userSettingsRaw);
-        const enabled = Array.isArray(userSettings.enabledMcpjsonServers) ? userSettings.enabledMcpjsonServers : [];
-        const disabled = Array.isArray(userSettings.disabledMcpjsonServers) ? userSettings.disabledMcpjsonServers : [];
-        for (const item of items) {
-          if (item.fileName === ".mcp.json") {
-            if (enabled.includes(item.name)) item.approvalState = "approved";
-            else if (disabled.includes(item.name)) item.approvalState = "rejected";
-            else item.approvalState = "pending";
-          }
+      const enabled = new Set();
+      const disabled = new Set();
+      let enableAll = false;
+      for (const sf of ["settings.json", "settings.local.json"]) {
+        const raw = await safeReadFile(join(CLAUDE_DIR, sf));
+        if (!raw) continue;
+        const s = JSON.parse(raw);
+        if (Array.isArray(s.enabledMcpjsonServers)) s.enabledMcpjsonServers.forEach(n => enabled.add(n));
+        if (Array.isArray(s.disabledMcpjsonServers)) s.disabledMcpjsonServers.forEach(n => disabled.add(n));
+        if (s.enableAllProjectMcpServers) enableAll = true;
+      }
+      for (const item of items) {
+        if (item.fileName === ".mcp.json") {
+          if (disabled.has(item.name)) item.approvalState = "rejected";
+          else if (enableAll || enabled.has(item.name)) item.approvalState = "approved";
+          else item.approvalState = "pending";
         }
       }
     } catch {}

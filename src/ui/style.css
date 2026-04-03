@@ -1070,6 +1070,37 @@ body {
 .st-ancestor { color: oklch(0.58 0.14 160); border-color: oklch(0.58 0.14 160); }
 .st-shadowed { color: var(--text-muted); border-color: var(--text-muted); opacity: 0.8; }
 .st-conflict { color: oklch(0.65 0.15 55); border-color: oklch(0.65 0.15 55); }
+/* Universal tooltip — add data-tooltip="..." to any element */
+[data-tooltip] { position: relative; cursor: help; }
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: var(--surface-inset);
+  color: var(--text-primary);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.65rem;
+  font-weight: 400;
+  font-style: normal;
+  text-transform: none;
+  letter-spacing: normal;
+  text-decoration: none;
+  line-height: 1.5;
+  white-space: normal;
+  width: max-content;
+  max-width: 260px;
+  z-index: 100;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+[data-tooltip]:hover::after { opacity: 1; }
+
+/* Scope-tag overrides (keep for backward compat) */
 .scope-tag[data-tooltip] { position: relative; cursor: help; }
 .scope-tag[data-tooltip]::after {
   content: attr(data-tooltip);
@@ -1112,6 +1143,24 @@ body {
 .rule-bar-content .rule-none { opacity: 0.5; }
 .d-effective-wrap { padding: 0 0 8px; }
 .d-effective { font-size: 0.72rem; color: var(--text-muted); line-height: 1.5; padding: 4px 0; }
+
+/* Item config (frontmatter fields — skills, agents, memories) */
+.d-item-config { padding: 8px 0 4px; display: flex; flex-direction: column; gap: 8px; }
+.d-item-config-row { display: flex; flex-direction: column; gap: 2px; }
+.d-item-select, .d-item-input { font-size: 0.78rem; padding: 4px 8px; border: 1px solid var(--border-light); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary); font-family: inherit; }
+.d-item-select:focus, .d-item-input:focus { outline: none; border-color: var(--accent); }
+.d-item-input { width: 100%; box-sizing: border-box; }
+.d-item-input::placeholder { color: var(--text-faint); font-size: 0.72rem; }
+.d-item-number { width: 80px; }
+
+/* Collapsible metadata toggle */
+.d-meta-toggle { font-size: 0.7rem; font-weight: 600; color: var(--text-faint); cursor: pointer; padding: 6px 0 2px; user-select: none; letter-spacing: 0.3px; text-transform: uppercase; }
+.d-meta-toggle:hover { color: var(--text-secondary); }
+.d-meta-hint { font-weight: 400; font-size: 0.62rem; color: var(--text-faint); }
+.d-meta-arrow { display: inline-block; transition: transform 0.15s; font-size: 0.6rem; }
+.d-meta-toggle.open .d-meta-arrow { transform: rotate(90deg); }
+.d-meta-body { padding: 4px 0 0; display: flex; flex-direction: column; gap: 8px; }
+
 .theme-btn.active { background: var(--accent-light); color: var(--accent-text); border-color: var(--accent); }
 
 .ctx-budget-summary { padding: 16px 20px; border-bottom: 1px solid var(--border-light); }
