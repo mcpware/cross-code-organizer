@@ -194,6 +194,7 @@ function setupUi() {
   setupCollapseAll();
   setupCcActions();
   setupExport();
+  setupBackupModal();
   setupContextBudget();
   setupResizers();
   setupSecurityScan();
@@ -1590,20 +1591,212 @@ function setupCcActions() {
 }
 
 function setupExport() {
-  const btn = document.getElementById("exportBtn");
-  let exporting = false;
+  document.getElementById("exportBtn").addEventListener("click", () => openBackupModal());
+}
 
-  btn.addEventListener("click", async () => {
-    if (exporting) return;
-    exporting = true;
-    btn.textContent = "📦 Exporting...";
+// ── Backup Center Modal ───────────────────────────────────────────
+
+function timeAgo(isoString) {
+  if (!isoString) return null;
+  const diff = Math.round((Date.now() - new Date(isoString).getTime()) / 1000);
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.round(diff / 60)} min ago`;
+  if (diff < 86400) return `${Math.round(diff / 3600)} h ago`;
+  return `${Math.round(diff / 86400)} d ago`;
+}
+
+const PILL_CATEGORIES = [
+  "session", "memory", "skill", "mcp", "setting", "rule",
+  "plan", "config", "agent", "hook", "command", "plugin",
+];
+
+function renderBackupPills(counts) {
+  const container = document.getElementById("bkpPills");
+  if (!counts || Object.keys(counts).length === 0) {
+    container.innerHTML = `<span class="bkp-pill-loading">No data</span>`;
+    return;
+  }
+  container.innerHTML = PILL_CATEGORIES
+    .filter(cat => (counts[cat] || 0) > 0)
+    .map(cat => `
+      <span class="bkp-pill bkp-pill-${cat}">
+        <span class="bkp-pill-dot"></span>${cat}<b>${counts[cat]}</b>
+      </span>`)
+    .join("");
+}
+
+async function openBackupModal() {
+  const modal = document.getElementById("backupModal");
+  modal.classList.remove("hidden");
+
+  // Populate from existing scan data immediately (no network needed)
+  if (data?.items) {
+    const counts = {};
+    for (const item of data.items) {
+      counts[item.category] = (counts[item.category] || 0) + 1;
+    }
+    renderBackupPills(counts);
+    document.getElementById("bkpTotalBadge").textContent =
+      `${data.items.length} items · ${data.scopes.length} scopes`;
+  }
+
+  // Fetch live backup status
+  try {
+    const status = await fetchJson("/api/backup/status");
+    if (!status.ok) return;
+
+    // Header: last run
+    const ago = timeAgo(status.lastRun);
+    document.getElementById("bkpLastRun").textContent =
+      ago ? `Last backed up: ${ago}` : "Never backed up";
+
+    // Pills + total (may have more detail from status)
+    if (status.counts && Object.keys(status.counts).length > 0) {
+      renderBackupPills(status.counts);
+      document.getElementById("bkpTotalBadge").textContent =
+        `${status.totalItems} items · ${status.scopeCount} scopes`;
+    }
+
+    // Git sync section
+    const conn = document.getElementById("bkpConnIndicator");
+    const label = document.getElementById("bkpConnLabel");
+    if (status.hasRemote) {
+      conn.dataset.status = "connected";
+      label.textContent = "Connected";
+    } else if (status.isGitRepo) {
+      conn.dataset.status = "unknown";
+      label.textContent = "No remote";
+    } else {
+      conn.dataset.status = "error";
+      label.textContent = "Not set up";
+    }
+
+    const remoteEl = document.getElementById("bkpRemoteUrl");
+    remoteEl.textContent = status.remoteUrl || "—";
+    remoteEl.title = status.remoteUrl || "";
+
+    document.getElementById("bkpCommitMsg").textContent = status.lastCommitMsg || "—";
+    document.getElementById("bkpCommitTime").textContent =
+      timeAgo(status.lastCommitDate) || "";
+
+    // Schedule section
+    const checkbox = document.getElementById("bkpSchedEnabled");
+    const schedLabel = document.getElementById("bkpSchedEnabledLabel");
+    checkbox.checked = status.schedulerInstalled;
+    schedLabel.textContent = status.schedulerInstalled ? "Enabled" : "Not installed";
+    document.getElementById("bkpSchedBody").classList.toggle("disabled", !status.schedulerInstalled);
+    document.getElementById("bkpSchedDesc").textContent =
+      status.schedulerInstalled ? `Every ${status.interval || 4} hours + on boot` : "Not running";
+    document.getElementById("bkpSchedNext").textContent =
+      status.schedulerInstalled ? "systemd timer active" : "";
+
+    // Set interval selector to current value
+    const sel = document.getElementById("bkpInterval");
+    if (status.interval) sel.value = String(status.interval);
+  } catch (e) {
+    document.getElementById("bkpLastRun").textContent = "Could not load status";
+  }
+}
+
+function closeBackupModal() {
+  document.getElementById("backupModal").classList.add("hidden");
+  // Reset any in-progress states
+  document.getElementById("bkpSyncLog").classList.add("hidden");
+  document.getElementById("bkpSyncLog").textContent = "";
+  document.getElementById("bkpRemoteEdit").classList.add("hidden");
+  document.getElementById("bkpSyncView").classList.remove("hidden");
+  document.getElementById("bkpConfigRemote").classList.remove("hidden");
+}
+
+function setupBackupModal() {
+  // Close button + overlay click
+  document.getElementById("backupModalClose").addEventListener("click", closeBackupModal);
+  document.getElementById("backupModal").addEventListener("click", (e) => {
+    if (e.target === document.getElementById("backupModal")) closeBackupModal();
+  });
+
+  // Escape key
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !document.getElementById("backupModal").classList.contains("hidden")) {
+      closeBackupModal();
+    }
+  });
+
+  // ── Back Up Now ──
+  document.getElementById("bkpRunNow").addEventListener("click", async () => {
+    const btn = document.getElementById("bkpRunNow");
+    btn.classList.add("loading");
+    btn.textContent = "Backing up...";
     try {
-      const raw = await fetch("/api/export", {
+      const res = await fetchJson("/api/backup/run", { method: "POST" });
+      if (res.ok) {
+        document.getElementById("bkpLastRun").textContent = "Last backed up: just now";
+        if (res.counts) {
+          renderBackupPills(res.counts);
+          document.getElementById("bkpTotalBadge").textContent =
+            `${res.totalItems} items · ${res.scopeCount} scopes`;
+        }
+        const conn = document.getElementById("bkpConnIndicator");
+        if (res.gitResult?.pushed) {
+          conn.dataset.status = "connected";
+          document.getElementById("bkpConnLabel").textContent = "Connected";
+          document.getElementById("bkpCommitMsg").textContent = res.gitResult.message || "—";
+          document.getElementById("bkpCommitTime").textContent = "just now";
+        }
+        toast(`Backed up ${res.copied} items${res.errors > 0 ? ` (${res.errors} warnings)` : ""}`, false, null, true);
+      } else {
+        toast(res.error || "Backup failed", true);
+      }
+    } catch {
+      toast("Backup failed", true);
+    }
+    btn.classList.remove("loading");
+    btn.textContent = "Back Up Now";
+  });
+
+  // ── Sync Now (git commit + push only) ──
+  document.getElementById("bkpSyncNow").addEventListener("click", async () => {
+    const btn = document.getElementById("bkpSyncNow");
+    const logEl = document.getElementById("bkpSyncLog");
+    btn.classList.add("loading");
+    btn.textContent = "Syncing...";
+    logEl.classList.remove("hidden", "error");
+    logEl.textContent = "Connecting...";
+    try {
+      const res = await fetchJson("/api/backup/sync", { method: "POST" });
+      logEl.textContent = res.message || (res.ok ? "Done" : res.error);
+      if (res.ok) {
+        const conn = document.getElementById("bkpConnIndicator");
+        conn.dataset.status = res.pushed ? "connected" : "unknown";
+        document.getElementById("bkpConnLabel").textContent = res.pushed ? "Connected" : "No remote";
+        if (res.message) {
+          document.getElementById("bkpCommitMsg").textContent = res.message;
+          document.getElementById("bkpCommitTime").textContent = "just now";
+        }
+      } else {
+        logEl.classList.add("error");
+        document.getElementById("bkpConnIndicator").dataset.status = "error";
+        document.getElementById("bkpConnLabel").textContent = "Error";
+      }
+    } catch (e) {
+      logEl.classList.add("error");
+      logEl.textContent = `Sync failed: ${e.message}`;
+    }
+    btn.classList.remove("loading");
+    btn.textContent = "Sync Now";
+  });
+
+  // ── Snapshot Export (old behavior: timestamped folder) ──
+  document.getElementById("bkpSnapshotExport").addEventListener("click", async () => {
+    const btn = document.getElementById("bkpSnapshotExport");
+    btn.textContent = "Exporting...";
+    btn.disabled = true;
+    try {
+      const res = await fetchJson("/api/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exportDir: null }), // server uses default ~/.claude/exports/
+        body: JSON.stringify({ exportDir: null }),
       });
-      const res = await raw.json();
       if (res.ok) {
         toast(`${res.copied} items exported to ${res.path}`, false, null, true);
       } else {
@@ -1612,8 +1805,85 @@ function setupExport() {
     } catch {
       toast("Export failed", true);
     }
-    exporting = false;
-    btn.textContent = "📦 Export All";
+    btn.textContent = "Snapshot Export";
+    btn.disabled = false;
+  });
+
+  // ── Open Backup Folder ──
+  document.getElementById("bkpOpenFolder").addEventListener("click", () => {
+    toast("Backup folder: ~/.claude-backups/latest", false, null, true);
+  });
+
+  // ── Configure Remote (inline edit) ──
+  document.getElementById("bkpConfigRemote").addEventListener("click", () => {
+    const current = document.getElementById("bkpRemoteUrl").textContent;
+    document.getElementById("bkpRemoteInput").value = current === "—" ? "" : current;
+    document.getElementById("bkpSyncView").classList.add("hidden");
+    document.getElementById("bkpRemoteEdit").classList.remove("hidden");
+    document.getElementById("bkpConfigRemote").classList.add("hidden");
+    document.getElementById("bkpRemoteInput").focus();
+  });
+
+  document.getElementById("bkpRemoteCancel").addEventListener("click", () => {
+    document.getElementById("bkpRemoteEdit").classList.add("hidden");
+    document.getElementById("bkpSyncView").classList.remove("hidden");
+    document.getElementById("bkpConfigRemote").classList.remove("hidden");
+  });
+
+  document.getElementById("bkpRemoteSave").addEventListener("click", async () => {
+    const url = document.getElementById("bkpRemoteInput").value.trim();
+    if (!url) return;
+    const btn = document.getElementById("bkpRemoteSave");
+    btn.textContent = "Saving...";
+    btn.disabled = true;
+    try {
+      const res = await fetchJson("/api/backup/remote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      if (res.ok) {
+        document.getElementById("bkpRemoteUrl").textContent = url;
+        document.getElementById("bkpRemoteUrl").title = url;
+        document.getElementById("bkpConnIndicator").dataset.status = "unknown";
+        document.getElementById("bkpConnLabel").textContent = "Configured";
+        document.getElementById("bkpRemoteEdit").classList.add("hidden");
+        document.getElementById("bkpSyncView").classList.remove("hidden");
+        document.getElementById("bkpConfigRemote").classList.remove("hidden");
+        toast("Remote configured", false, null, true);
+      } else {
+        toast(res.error || "Failed to save remote", true);
+      }
+    } catch {
+      toast("Failed to save remote", true);
+    }
+    btn.textContent = "Save";
+    btn.disabled = false;
+  });
+
+  // ── Apply Interval ──
+  document.getElementById("bkpApplyInterval").addEventListener("click", async () => {
+    const intervalHours = parseInt(document.getElementById("bkpInterval").value);
+    const btn = document.getElementById("bkpApplyInterval");
+    btn.textContent = "Applying...";
+    btn.disabled = true;
+    try {
+      const res = await fetchJson("/api/backup/scheduler/install", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intervalHours }),
+      });
+      if (res.ok) {
+        document.getElementById("bkpSchedDesc").textContent = `Every ${intervalHours} hours + on boot`;
+        toast(`Schedule updated: every ${intervalHours} hours`, false, null, true);
+      } else {
+        toast(res.error || "Failed to update schedule", true);
+      }
+    } catch {
+      toast("Failed to update schedule", true);
+    }
+    btn.textContent = "Apply";
+    btn.disabled = false;
   });
 }
 

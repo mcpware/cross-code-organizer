@@ -27,7 +27,7 @@
 
       <div class="sidebar-tree" id="sidebarTree"></div>
       <div class="sidebar-footer">
-        <button class="sidebar-export-btn" id="exportBtn" type="button">📦 Export All</button>
+        <button class="sidebar-export-btn" id="exportBtn" type="button">☁ Backup Center</button>
         <a href="https://github.com/mcpware/claude-code-organizer" target="_blank" rel="noopener">⭐ Star me on GitHub</a>
         <a href="https://github.com/mcpware/claude-code-organizer/issues" target="_blank" rel="noopener">💡 Bug? Feedback? Same-day fix promise</a>
         <span class="sidebar-footer-hint">Type <code>/cco</code> in Claude Code to reopen</span>
@@ -251,6 +251,106 @@
         <button class="d-btn d-btn-open" id="deleteCancel" type="button">Cancel</button>
         <button class="d-btn d-btn-del modal-danger" id="deleteConfirm" type="button">Delete</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ── Backup Center Modal ──────────────────────────────────── -->
+  <div class="modal-bg hidden" id="backupModal">
+    <div class="modal bkp-modal" role="dialog" aria-modal="true" aria-labelledby="bkpTitle">
+
+      <!-- Header -->
+      <div class="bkp-hdr">
+        <div class="bkp-hdr-left">
+          <h3 id="bkpTitle">Backup Center</h3>
+          <span class="bkp-last-run" id="bkpLastRun">Loading...</span>
+        </div>
+        <button class="detail-x" id="backupModalClose" type="button" aria-label="Close">✕</button>
+      </div>
+
+      <!-- Section 1: Items Backed Up -->
+      <section class="bkp-section">
+        <div class="bkp-section-hdr">
+          <span class="bkp-section-title">Items Backed Up</span>
+          <span class="bkp-total-badge" id="bkpTotalBadge">—</span>
+        </div>
+        <div class="bkp-pills" id="bkpPills">
+          <span class="bkp-pill-loading">Loading scan data...</span>
+        </div>
+      </section>
+
+      <!-- Section 2: GitHub Sync -->
+      <section class="bkp-section">
+        <div class="bkp-section-hdr">
+          <span class="bkp-section-title">GitHub Sync</span>
+          <span class="bkp-conn-indicator" id="bkpConnIndicator" data-status="unknown">
+            <span class="bkp-conn-dot"></span>
+            <span class="bkp-conn-label" id="bkpConnLabel">Checking...</span>
+          </span>
+        </div>
+        <!-- Normal view -->
+        <div id="bkpSyncView">
+          <div class="bkp-sync-row">
+            <span class="bkp-remote-url" id="bkpRemoteUrl" title="">—</span>
+            <button class="d-btn d-btn-move bkp-sync-btn" id="bkpSyncNow" type="button">Sync Now</button>
+          </div>
+          <div class="bkp-last-commit">
+            <span class="bkp-commit-msg" id="bkpCommitMsg">—</span>
+            <span class="bkp-commit-time" id="bkpCommitTime"></span>
+          </div>
+          <div class="bkp-sync-log hidden" id="bkpSyncLog"></div>
+        </div>
+        <!-- Configure remote (hidden by default) -->
+        <div id="bkpRemoteEdit" class="hidden">
+          <div class="bkp-remote-edit-row">
+            <input class="bkp-remote-input" id="bkpRemoteInput" type="text" placeholder="git@github.com:you/claude-backup.git" spellcheck="false">
+          </div>
+          <div class="bkp-remote-edit-btns">
+            <button class="d-btn d-btn-move" id="bkpRemoteSave" type="button">Save</button>
+            <button class="d-btn d-btn-open" id="bkpRemoteCancel" type="button">Cancel</button>
+          </div>
+        </div>
+        <button class="bkp-configure-link" id="bkpConfigRemote" type="button">Configure remote...</button>
+      </section>
+
+      <!-- Section 3: Schedule -->
+      <section class="bkp-section">
+        <div class="bkp-section-hdr">
+          <span class="bkp-section-title">Auto-Backup</span>
+          <label class="bkp-toggle" for="bkpSchedEnabled">
+            <input type="checkbox" id="bkpSchedEnabled">
+            <span class="bkp-toggle-track"></span>
+            <span class="bkp-toggle-label" id="bkpSchedEnabledLabel">Not installed</span>
+          </label>
+        </div>
+        <div class="bkp-sched-body" id="bkpSchedBody">
+          <div class="bkp-sched-info">
+            <span class="bkp-sched-desc" id="bkpSchedDesc">—</span>
+            <span class="bkp-sched-next" id="bkpSchedNext"></span>
+          </div>
+          <div class="bkp-sched-interval">
+            <span class="bkp-field-label">Interval</span>
+            <div class="bkp-interval-row">
+              <select class="bkp-select" id="bkpInterval" aria-label="Backup interval in hours">
+                <option value="1">Every 1 h</option>
+                <option value="2">Every 2 h</option>
+                <option value="4" selected>Every 4 h</option>
+                <option value="8">Every 8 h</option>
+                <option value="12">Every 12 h</option>
+                <option value="24">Every 24 h</option>
+              </select>
+              <button class="export-btn" id="bkpApplyInterval" type="button">Apply</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 4: Actions -->
+      <div class="bkp-actions">
+        <button class="d-btn d-btn-move bkp-primary-btn" id="bkpRunNow" type="button">Back Up Now</button>
+        <button class="d-btn d-btn-open bkp-ghost-btn" id="bkpSnapshotExport" type="button">Snapshot Export</button>
+        <button class="d-btn d-btn-open bkp-ghost-btn" id="bkpOpenFolder" type="button">Open Backup Folder</button>
+      </div>
+
     </div>
   </div>
 

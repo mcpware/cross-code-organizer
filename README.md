@@ -8,7 +8,7 @@
 [![GitHub forks](https://img.shields.io/github/forks/mcpware/claude-code-organizer)](https://github.com/mcpware/claude-code-organizer/network/members)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org)
-[![Tests](https://img.shields.io/badge/tests-263%20passing-brightgreen)](https://github.com/mcpware/claude-code-organizer)
+[![Tests](https://img.shields.io/badge/tests-297%20passing-brightgreen)](https://github.com/mcpware/claude-code-organizer)
 [![Zero Telemetry](https://img.shields.io/badge/telemetry-zero-blue)](https://github.com/mcpware/claude-code-organizer)
 [![MCP Security](https://img.shields.io/badge/MCP-Security%20Scanner-red)](https://github.com/mcpware/claude-code-organizer)
 [![Awesome MCP](https://img.shields.io/badge/Awesome-MCP%20Servers-fc60a8?logo=awesomelists&logoColor=white)](https://github.com/punkpeye/awesome-mcp-servers)
@@ -17,7 +17,7 @@ English | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [�
 
 **Claude Code Organizer (CCO)** is a free, open-source dashboard that lets you manage all Claude Code configuration — memories, skills, MCP servers, settings, agents, rules, and hooks — across global and project scopes. It includes a security scanner for MCP tool poisoning and prompt injection, a per-item context token budget tracker, per-project MCP enable/disable controls, and bulk cleanup for duplicate configs. All without leaving the window.
 
-> **v0.17.0** — Session Distiller strips bloated sessions down to ~10% of their original size while keeping every word of conversation intact. Image Trimmer removes base64 screenshots that trigger "image exceeds dimension limit" warnings. Both tools run from the dashboard or CLI.
+> **v0.18.0** — Backup Center: one click backs up every memory, skill, MCP config, rule, plan, agent, and session to a private GitHub repo. Auto-runs every 4 hours via systemd. See git history. Never lose your Claude setup again.
 
 > Scan for poisoned MCP servers. Reclaim wasted context tokens. Disable MCP servers per-project. Find and delete duplicate memories. Move misplaced configs where they belong.
 
@@ -25,7 +25,7 @@ English | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [�
 
 ![Claude Code Organizer Demo](docs/demo.gif)
 
-<sub>263 tests (110 unit + 153 E2E) | Zero dependencies | Demo recorded by AI using [Pagecast](https://github.com/mcpware/pagecast)</sub>
+<sub>297 tests (124 unit + 173 E2E) | Zero dependencies | Demo recorded by AI using [Pagecast](https://github.com/mcpware/pagecast)</sub>
 
 > 100+ stars in 5 days. Built by a CS dropout who found 140 invisible config files controlling Claude and decided no one should have to `cat` each one. First open source project — thank you to everyone who starred, tested, and reported issues.
 
@@ -77,6 +77,7 @@ Or run directly: `npx @mcpware/claude-code-organizer`
 | Bulk operations | **Yes** | No | No | No |
 | Zero-install (`npx`) | **Yes** | Varies | No (Tauri/Electron) | No (VS Code) |
 | Session distillation + image trimming | **Yes** | No | No | No |
+| Backup Center (git-backed, auto-schedule) | **Yes** | No | No | No |
 | MCP tools (AI-accessible) | **Yes** | No | No | No |
 
 ## Context Budget: See How Many Tokens Claude Code Pre-Loads

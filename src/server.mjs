@@ -39,6 +39,8 @@ async function checkForUpdate() {
 
 const HOME = homedir();
 const CLAUDE_DIR = join(HOME, ".claude");
+const BACKUP_DIR = join(HOME, ".claude-backups");
+const BACKUP_CONFIG = join(BACKUP_DIR, "config.json");
 
 /**
  * Validate that a file path is within allowed directories.
@@ -911,6 +913,161 @@ async function handleRequest(req, res) {
       });
     } catch (err) {
       return json(res, { ok: false, error: `Export failed: ${err.message}` }, 400);
+    }
+  }
+
+  // ── Backup Center API ─────────────────────────────────────────────
+
+  // GET /api/backup/status — current backup state, git info, scheduler info
+  if (path === "/api/backup/status" && req.method === "GET") {
+    try {
+      const { readFile: rf } = await import("node:fs/promises");
+      const { isGitRepo, hasRemote, getRemoteUrl, getLastCommit } = await import("./backup-git.mjs");
+      const { isInstalled } = await import("./backup-scheduler.mjs");
+
+      let config = {};
+      try { config = JSON.parse(await rf(BACKUP_CONFIG, "utf-8")); } catch {}
+
+      const gitRepo = await isGitRepo(BACKUP_DIR);
+      const remote = gitRepo ? await hasRemote(BACKUP_DIR) : false;
+      const remoteUrl = remote ? await getRemoteUrl(BACKUP_DIR) : null;
+      const lastCommit = gitRepo ? await getLastCommit(BACKUP_DIR) : { msg: null, date: null };
+      const schedulerInstalled = await isInstalled();
+
+      const counts = cachedData ? { ...cachedData.counts } : {};
+      const totalItems = cachedData ? cachedData.items.length : 0;
+      const scopeCount = cachedData ? cachedData.scopes.length : 0;
+
+      return json(res, {
+        ok: true,
+        counts, totalItems, scopeCount,
+        lastRun: config.lastRun || null,
+        lastCopied: config.lastCopied || 0,
+        lastErrors: config.lastErrors || 0,
+        interval: config.interval || 4,
+        isGitRepo: gitRepo,
+        hasRemote: remote,
+        remoteUrl,
+        lastCommitMsg: lastCommit.msg,
+        lastCommitDate: lastCommit.date,
+        schedulerInstalled,
+      });
+    } catch (err) {
+      return json(res, { ok: false, error: err.message }, 500);
+    }
+  }
+
+  // POST /api/backup/run — export to latest/ + git commit + push
+  if (path === "/api/backup/run" && req.method === "POST") {
+    try {
+      const { rm, mkdir: mk, copyFile: cpf, writeFile: wf, cp: cpDir } = await import("node:fs/promises");
+      const { basename } = await import("node:path");
+      const { commitAndPush } = await import("./backup-git.mjs");
+      const { readFile: rf } = await import("node:fs/promises");
+
+      const scanData = await freshScan();
+      const latestDir = join(BACKUP_DIR, "latest");
+
+      try { await rm(latestDir, { recursive: true, force: true }); } catch {}
+
+      let copied = 0;
+      const errors = [];
+      const exportableItems = scanData.items.filter(
+        item => item.category !== "setting" && item.category !== "hook"
+      );
+
+      for (const item of exportableItems) {
+        try {
+          const subDir = join(latestDir, item.scopeId, item.category);
+          await mk(subDir, { recursive: true });
+          if (item.category === "skill") {
+            await cpDir(item.path, join(subDir, item.fileName || basename(item.path)), { recursive: true });
+          } else if (item.category === "mcp") {
+            await wf(join(subDir, `${item.name}.json`), JSON.stringify({ [item.name]: item.mcpConfig || {} }, null, 2) + "\n");
+          } else if (item.category === "plugin" && item.path) {
+            await cpDir(item.path, join(subDir, item.fileName || basename(item.path)), { recursive: true });
+          } else if (item.path) {
+            await cpf(item.path, join(subDir, item.fileName || basename(item.path)));
+          }
+          copied++;
+        } catch (e) {
+          errors.push(`${item.category}/${item.name}: ${e.message}`);
+        }
+      }
+
+      await wf(join(latestDir, "backup-summary.json"), JSON.stringify({
+        exportedAt: new Date().toISOString(), totalItems: exportableItems.length, copied, errors: errors.length, counts: scanData.counts,
+      }, null, 2) + "\n");
+
+      const gitResult = await commitAndPush(BACKUP_DIR);
+
+      let config = {};
+      try { config = JSON.parse(await rf(BACKUP_CONFIG, "utf-8")); } catch {}
+      await wf(BACKUP_CONFIG, JSON.stringify({ ...config, lastRun: new Date().toISOString(), lastCopied: copied, lastErrors: errors.length }, null, 2) + "\n");
+
+      return json(res, { ok: true, copied, errors: errors.length, gitResult, counts: scanData.counts, totalItems: scanData.items.length, scopeCount: scanData.scopes.length });
+    } catch (err) {
+      return json(res, { ok: false, error: err.message }, 500);
+    }
+  }
+
+  // POST /api/backup/sync — git commit + push only
+  if (path === "/api/backup/sync" && req.method === "POST") {
+    try {
+      const { commitAndPush } = await import("./backup-git.mjs");
+      const result = await commitAndPush(BACKUP_DIR);
+      return json(res, { ok: true, ...result });
+    } catch (err) {
+      return json(res, { ok: false, error: err.message }, 500);
+    }
+  }
+
+  // POST /api/backup/scheduler/install — update interval, reinstall systemd timer
+  if (path === "/api/backup/scheduler/install" && req.method === "POST") {
+    try {
+      const { intervalHours = 4 } = await readBody(req);
+      const { readFile: rf, writeFile: wf } = await import("node:fs/promises");
+      const { install, getNodeAndCliPath } = await import("./backup-scheduler.mjs");
+
+      const paths = await getNodeAndCliPath();
+      if (!paths) return json(res, { ok: false, error: "Backup scheduler not initialized. Run `claude-code-backup init` first." }, 400);
+
+      await install(paths.nodePath, paths.cliPath, intervalHours);
+
+      let config = {};
+      try { config = JSON.parse(await rf(BACKUP_CONFIG, "utf-8")); } catch {}
+      await wf(BACKUP_CONFIG, JSON.stringify({ ...config, interval: intervalHours }, null, 2) + "\n");
+
+      return json(res, { ok: true, interval: intervalHours });
+    } catch (err) {
+      return json(res, { ok: false, error: err.message }, 500);
+    }
+  }
+
+  // POST /api/backup/remote — set or update git remote URL
+  if (path === "/api/backup/remote" && req.method === "POST") {
+    try {
+      const { url } = await readBody(req);
+      if (!url) return json(res, { ok: false, error: "Missing url" }, 400);
+      const { mkdir: mk, writeFile: wf } = await import("node:fs/promises");
+      const { execFile } = await import("node:child_process");
+      const { promisify: prom } = await import("node:util");
+      const exec = prom(execFile);
+      const { isGitRepo, hasRemote, addRemote, initRepo } = await import("./backup-git.mjs");
+
+      await mk(BACKUP_DIR, { recursive: true });
+      if (!(await isGitRepo(BACKUP_DIR))) {
+        await initRepo(BACKUP_DIR);
+        await wf(join(BACKUP_DIR, ".gitignore"), "backup-*/\n*.log\nconfig.json\n");
+      }
+      if (await hasRemote(BACKUP_DIR)) {
+        await exec("git", ["remote", "set-url", "origin", url], { cwd: BACKUP_DIR });
+      } else {
+        await addRemote(BACKUP_DIR, url);
+      }
+      return json(res, { ok: true, url });
+    } catch (err) {
+      return json(res, { ok: false, error: err.message }, 500);
     }
   }
 
