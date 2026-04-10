@@ -48,7 +48,7 @@ Most recently, Dataiku released Kiji Inspector (March 2026), the first open-sour
 
 I kept getting results that looked too good, so I kept trying to break them. Here's what happened.
 
-The logic across all five rounds is the same: each round removes a text-level shortcut that might explain the probe's performance. If the probe is just doing fancy text analysis, its accuracy should drop when I remove the text signal it relies on. It never did. TF-IDF went from 93% to 30% as I eliminated confounds. The activation probe stayed above 93% throughout.
+The logic across all five rounds is the same: each round removes a text-level shortcut that might explain the probe's performance. If the probe is just doing fancy text analysis, its accuracy should drop when I remove the text signal it relies on. It never did. Text baselines start near ceiling on the templated MCPTox setup, crash to 30% on the tightly matched 20-pair set, and only recover to 72.5-79.5% on the harder 100-pair tests. The activation probe stays at 97-98.5% on the main matched-pair experiments.
 
 ### Round 1: My scanner catches nothing
 
@@ -64,13 +64,13 @@ This wasn't surprising in hindsight. Prior work has shown that model internals e
 
 I used TransformerLens to extract GPT-2's internal activations while it read the same MCPTox descriptions. Trained a logistic regression on these activations. Got **98.3%** accuracy.
 
-But then I ran a simple vocabulary classifier (TF-IDF) on the same data: **93.3%**. That's almost as high. MCPTox descriptions are generated from templates — they all use words like "MUST first call" and "pre-authorization." So maybe my activation probe was just doing fancy word counting.
+But then I ran a simple vocabulary classifier (TF-IDF) on the same MCPTox setup: **about 97%** on current reruns. That's almost as high. MCPTox descriptions are generated from templates — they all use words like "MUST first call" and "pre-authorization." So maybe my activation probe was just doing fancy word counting.
 
 **I couldn't tell yet.**
 
 ### Round 3-4: Trying to make data TF-IDF can't classify
 
-I generated poisoned descriptions using multiple models (Claude Opus, Claude Sonnet, Codex, Gemini) to diversify writing style and reduce single-source generation bias. Each time, TF-IDF adapted when retrained — 88-96%. The problem: if you're describing someone stealing SSH keys, you're going to use words like "ssh" and "keys." You can't avoid it.
+I generated poisoned descriptions using multiple models (Claude Opus, Claude Sonnet, Codex, Gemini) to diversify writing style and reduce single-source generation bias. Each time, TF-IDF adapted when retrained — from the mid-80s to high-90s depending on the dataset. The problem: if you're describing someone stealing SSH keys, you're going to use words like "ssh" and "keys." You can't avoid it.
 
 Then it clicked: **don't try to make the vocabulary different. Make it the SAME. Force both safe and malicious to use identical words about the same topics.**
 
@@ -108,7 +108,7 @@ The signal peaking at middle layers (Layer 3) and weakening toward the output (L
 
 ---
 
-Across all five rounds, the activation probe stayed above 93%. Text methods went from 93% down to 72.5% as I eliminated confounds one by one.
+Across all five rounds, the activation probe stayed strong while text methods collapsed once topic vocabulary and length confounds were controlled. On the main matched-pair experiments, text methods ranged from 30% to 79.5%; the activation probe stayed between 97% and 98.5%.
 
 ---
 
@@ -164,6 +164,7 @@ I've done everything I can with public tools and open-source models. The next st
 
 The main experiments (Rounds 1-5b) are reproducible from this repo:
 - **Notebook:** [`research/reproduce-experiments.ipynb`](https://github.com/mcpware/claude-code-organizer/blob/main/research/reproduce-experiments.ipynb) — covers Experiments 1-5b end to end
+- **Execution note:** The notebook is committed as source code plus datasets; exact percentages should be regenerated locally from the included data rather than trusting historical saved outputs.
 - **Datasets:** `research/datasets/` (with README explaining each file)
 - **Scanner benchmark:** `research/benchmark-mcptox.mjs`
 - **Random seed:** 42 everywhere

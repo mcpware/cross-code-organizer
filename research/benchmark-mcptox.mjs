@@ -1,6 +1,6 @@
 /**
  * Benchmark CCO security scanner against MCPTox dataset.
- * Tests how many poisoned tool descriptions our 60 patterns catch.
+ * Tests how many poisoned tool descriptions the deterministic rule set catches.
  */
 
 import { readFile } from "node:fs/promises";
@@ -10,10 +10,10 @@ import { dirname, join } from "node:path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Import scanner functions
-const scannerPath = join(__dirname, "src", "security-scanner.mjs");
+const scannerPath = join(__dirname, "..", "src", "security-scanner.mjs");
 const scanner = await import(scannerPath);
 
-const MCPTOX_PATH = "/home/nicole/MyGithub/notable-repos/MCPTox-Benchmark/pure_tool.json";
+const MCPTOX_PATH = join(__dirname, "datasets", "MCPTox-Benchmark", "pure_tool.json");
 
 async function run() {
   // Load MCPTox dataset
@@ -105,9 +105,8 @@ async function run() {
   }
 
   console.log(`\n=== SUMMARY ===`);
-  console.log(`CCO Scanner Detection Rate against MCPTox: ${detectionRate}%`);
+  console.log(`Deterministic scanner detection rate against MCPTox: ${detectionRate}%`);
   console.log(`(MCPTox paper reports 84.2% attack success rate across 12 LLM agents)`);
-  console.log(`(Industry average scanner detection rate: <30%)`);
 }
 
 run().catch(console.error);
