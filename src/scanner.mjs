@@ -152,6 +152,162 @@ async function getSettingsOverrides() {
 // ── Path decoding ────────────────────────────────────────────────────
 
 /**
+ * Ground-truth resolver: read a session file inside the encoded project dir
+ * and pull the `cwd` field from any entry. Claude Code writes the real
+ * working directory into every session entry, so this gives us an exact
+ * answer without any pattern-matching guesswork.
+ *
+ * This handles collisions in the encoding — e.g. "E--PycharmProjects----------"
+ * could match both "...\人生管理\情報系統" and "...\人生管理\靈魂養成" via
+ * character pattern matching, but the session file tells us which one the
+ * user actually ran Claude Code from.
+ */
+async function resolveViaSessionCwd(claudeProjectDir) {
+  let entries;
+  try {
+    entries = await readdir(claudeProjectDir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+
+  // Try up to a few jsonl files — first one usually suffices
+  const sessionFiles = entries
+    .filter(e => e.isFile() && e.name.endsWith(".jsonl"))
+    .slice(0, 3);
+
+  for (const entry of sessionFiles) {
+    const fullPath = join(claudeProjectDir, entry.name);
+    const lines = await readFirstLines(fullPath, 20);
+    for (const line of lines) {
+      const parsed = parseJsonLine(line);
+      const cwd = parsed?.cwd;
+      if (typeof cwd === "string" && cwd.length > 0) {
+        return cwd;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Character-level fallback resolver for encoded project paths that contain
+ * Unicode characters (e.g. CJK paths on Windows).
+ *
+ * Claude Code's encoding is character-preserving: each char in the original
+ * path maps to exactly one char in the encoded name. The encoding rule is:
+ *   - [A-Za-z0-9] and '-' are preserved as-is
+ *   - Everything else (separators / \ :, underscores, dots, Unicode chars,
+ *     etc.) becomes '-'
+ *
+ * This means we can match real directory names against the encoded pattern
+ * by treating each '-' in the pattern as a "non-alphanumeric" wildcard:
+ * it matches anything except [A-Za-z0-9]. This correctly rejects matches
+ * like "1688" against pattern "----" (because digits ARE preserved, so
+ * a real "1688" dir would have encoded as "1688", not as dashes).
+ *
+ * Walks the real filesystem from the root, at each level enumerating actual
+ * directory entries and checking which ones fit the pattern at the current
+ * position. Unlike the segment-based resolver, this handles names containing
+ * arbitrary Unicode characters that would otherwise collapse to empty segments.
+ *
+ * Returns the resolved absolute path, or null if no match.
+ */
+async function resolveEncodedProjectPathUnicode(encoded) {
+  // Strip leading dash
+  let pattern = encoded.replace(/^-/, "");
+  let rootPath;
+
+  // Windows drive letter: "c--" at start becomes "C:\"
+  if (platform() === "win32" && /^[a-z]--/i.test(pattern)) {
+    rootPath = pattern[0].toUpperCase() + ":\\";
+    pattern = pattern.slice(3);
+  } else {
+    rootPath = "/";
+  }
+
+  const ALNUM = /[A-Za-z0-9]/;
+
+  // Walk char-by-char. At each step, try every dir entry that fits the
+  // pattern starting at the current position.
+  async function walk(currentPath, pos) {
+    if (pos >= pattern.length) {
+      return (await exists(currentPath)) ? currentPath : null;
+    }
+
+    let entries;
+    try {
+      entries = (await readdir(currentPath, { withFileTypes: true }))
+        .filter(e => e.isDirectory())
+        .map(e => e.name);
+    } catch {
+      return null;
+    }
+
+    // Find every entry that could match the pattern at pos
+    const candidates = [];
+    for (const name of entries) {
+      const nameLen = name.length;
+      if (pos + nameLen > pattern.length) continue;
+
+      let ok = true;
+      for (let i = 0; i < nameLen; i++) {
+        const pc = pattern[pos + i];
+        const nc = name[i];
+        if (pc === "-") {
+          // '-' is a non-alphanumeric wildcard: matches anything that
+          // would encode to '-' (i.e. NOT [A-Za-z0-9]). A literal '-'
+          // in the real name also passes since '-' is non-alphanumeric.
+          if (ALNUM.test(nc)) {
+            ok = false;
+            break;
+          }
+        } else if (pc.toLowerCase() !== nc.toLowerCase()) {
+          ok = false;
+          break;
+        }
+      }
+      if (!ok) continue;
+
+      // After the name, either end-of-pattern or a '-' (separator)
+      const nextPos = pos + nameLen;
+      if (nextPos === pattern.length) {
+        candidates.push({ name, nextPos });
+      } else if (pattern[nextPos] === "-") {
+        candidates.push({ name, nextPos: nextPos + 1 });
+      }
+    }
+
+    // Try longest matches first so we don't prematurely match a shorter prefix
+    candidates.sort((a, b) => b.name.length - a.name.length);
+
+    for (const c of candidates) {
+      const result = await walk(join(currentPath, c.name), c.nextPos);
+      if (result) return result;
+    }
+
+    return null;
+  }
+
+  return walk(rootPath, 0);
+}
+
+/**
+ * Last-resort display name for projects whose encoded path cannot be decoded
+ * even by the Unicode resolver. Runs of dashes become "…" to indicate
+ * unknown characters.
+ */
+function prettifyEncodedPath(encoded) {
+  let cleaned = encoded.replace(/^-/, "");
+  if (/^[a-z]--/i.test(cleaned)) {
+    cleaned = cleaned[0].toUpperCase() + ":/" + cleaned.slice(3);
+  }
+  cleaned = cleaned.replace(/-{2,}/g, "/…/");
+  cleaned = cleaned.replace(/-/g, "/");
+  cleaned = cleaned.replace(/\/+/g, "/").replace(/^\/|\/$/g, "");
+  return cleaned || encoded;
+}
+
+/**
  * Resolve an encoded project dir name back to a real filesystem path.
  * E.g. "-home-user-mycompany-repo1" → "/home/user/mycompany/repo1"
  *
@@ -248,38 +404,60 @@ async function discoverScopes() {
   for (const d of projectDirs) {
     if (!d.isDirectory()) continue;
 
-    // Decode encoded path: try to find the real directory on disk.
-    // The encoding replaces / with - and prepends -.
-    // E.g. -home-user-mycompany-repo1 → /home/user/mycompany/repo1
-    // Since directory names can contain dashes, we resolve by checking which real path exists.
-    const realPath = await resolveEncodedProjectPath(d.name);
-    if (!realPath) continue;
-
-    const shortName = basename(realPath);
+    // Decode encoded path to a real filesystem path. Three strategies:
+    //  1. Ground truth: read a session file's `cwd` field — unambiguous
+    //     even when encoding collides (e.g. two CJK sibling dirs of
+    //     equal length encode to the same string).
+    //  2. Segment-based resolver (fast, handles normal ASCII paths).
+    //  3. Character-level Unicode resolver (handles CJK and other
+    //     non-alphanumeric names).
+    // If all fail, keep the project with a prettified display name so
+    // its memories/sessions are still scannable.
     const projectDir = join(projectsDir, d.name);
+    let realPath = await resolveViaSessionCwd(projectDir);
+    if (!realPath) realPath = await resolveEncodedProjectPath(d.name);
+    if (!realPath) realPath = await resolveEncodedProjectPathUnicode(d.name);
 
     // Discover any project directory that has content (not just memory).
     // Sessions, plans, or other items may exist without a memory/ subfolder.
     const entries = await readdir(projectDir);
     const hasContent = entries.some(e => e !== ".DS_Store");
+    if (!hasContent) continue;
 
-    if (hasContent) {
-      projectEntries.push({
-        encodedName: d.name,
-        realPath,
-        shortName,
-        claudeProjectDir: projectDir,
-      });
-    }
+    const shortName = realPath ? basename(realPath) : prettifyEncodedPath(d.name);
+
+    projectEntries.push({
+      encodedName: d.name,
+      realPath,
+      shortName,
+      claudeProjectDir: projectDir,
+    });
   }
 
-  // Sort by path depth (shorter = parent) then alphabetically
+  // Sort: projects with resolved paths first (by depth), unresolved last
   projectEntries.sort((a, b) => {
+    if (!a.realPath && !b.realPath) return a.shortName.localeCompare(b.shortName);
+    if (!a.realPath) return 1;
+    if (!b.realPath) return -1;
     const da = a.realPath.split("/").length;
     const db = b.realPath.split("/").length;
     if (da !== db) return da - db;
     return a.realPath.localeCompare(b.realPath);
   });
+
+  // Disambiguate duplicate shortNames by prepending the parent dir name
+  const nameCount = new Map();
+  for (const p of projectEntries) {
+    nameCount.set(p.shortName, (nameCount.get(p.shortName) || 0) + 1);
+  }
+  for (const p of projectEntries) {
+    if (nameCount.get(p.shortName) > 1 && p.realPath) {
+      const parts = p.realPath.split(/[\/\\]/).filter(Boolean);
+      if (parts.length >= 2) {
+        p.shortName = parts[parts.length - 2] + "/" + p.shortName;
+      }
+    }
+  }
 
   // Claude Code has two scopes: User (global) and Project.
   // Every project's parent is always global — there is no intermediate workspace scope.
@@ -382,18 +560,84 @@ async function scanMemories(scope) {
   return items;
 }
 
+/**
+ * Encode a real filesystem path into Claude Code's project dir naming scheme.
+ * Every non-alphanumeric character (except '-') becomes '-'. Used to match
+ * scopes to plugin installs whose projectPath is a real filesystem path.
+ */
+function encodeClaudeProjectName(realPath) {
+  return realPath.replace(/[^A-Za-z0-9-]/g, "-");
+}
+
+/**
+ * Read one skill directory and emit a skill item. Used by both the classic
+ * skills dirs (~/.claude/skills, repo/.claude/skills) and by plugin-provided
+ * skills dirs.
+ */
+async function readSkillEntry(skillsRoot, entryName, scope, bundleMap, pluginName = null) {
+  const skillDir = join(skillsRoot, entryName);
+  const skillMd = join(skillDir, "SKILL.md");
+  if (!(await exists(skillMd))) return null;
+
+  const s = await safeStat(skillMd);
+  const content = await safeReadFile(skillMd);
+
+  // Extract description: first meaningful paragraph line after the heading
+  let description = "";
+  if (content) {
+    const lines = content.split("\n");
+    let pastHeading = false;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("# ")) { pastHeading = true; continue; }
+      if (!pastHeading) continue;
+      if (!trimmed) continue;
+      if (trimmed.startsWith("```") || trimmed.startsWith("-") || trimmed.startsWith("|")) continue;
+      if (trimmed.match(/^\w+:\s/)) continue;
+      if (trimmed.startsWith("##")) continue;
+      description = trimmed.slice(0, 120);
+      break;
+    }
+  }
+
+  const allFiles = await readdir(skillDir, { withFileTypes: true });
+  const fileCount = allFiles.filter(f => f.isFile()).length;
+
+  let totalSize = 0;
+  for (const f of allFiles.filter(f => f.isFile())) {
+    const fs = await safeStat(join(skillDir, f.name));
+    if (fs) totalSize += fs.size;
+  }
+
+  const bundleInfo = bundleMap?.get(entryName);
+
+  return {
+    category: "skill",
+    scopeId: scope.id,
+    name: entryName,
+    fileName: entryName,
+    description,
+    subType: pluginName ? "plugin-skill" : "skill",
+    size: formatSize(totalSize),
+    sizeBytes: totalSize,
+    fileCount,
+    mtime: s ? s.mtime.toISOString().slice(0, 16) : "",
+    ctime: s ? s.birthtime.toISOString().slice(0, 16) : "",
+    path: skillDir,
+    bundle: pluginName || bundleInfo?.source || null,
+  };
+}
+
 async function scanSkills(scope) {
   const items = [];
-  let skillDirs = [];
+  const skillDirs = [];
 
   if (scope.id === "global") {
-    // Global skills: ~/.claude/skills/ + managed
     const dir = join(CLAUDE_DIR, "skills");
     if (await exists(dir)) skillDirs.push(dir);
     const managedSkills = join(MANAGED_DIR, ".claude", "skills");
     if (await exists(managedSkills)) skillDirs.push(managedSkills);
   } else if (scope.repoDir && !isGlobalClaudeDir(scope)) {
-    // Per-repo skills: repo/.claude/skills/
     const dir = join(scope.repoDir, ".claude", "skills");
     if (await exists(dir)) skillDirs.push(dir);
   }
@@ -401,69 +645,63 @@ async function scanSkills(scope) {
   // Load bundle info from skills-lock.json
   const bundleMap = await loadSkillBundles(scope.repoDir);
 
+  // Classic skill directories
   for (const skillsRoot of skillDirs) {
     const entries = await readdir(skillsRoot, { withFileTypes: true });
     for (const entry of entries) {
-      // Support both real directories and symlinks pointing to directories
       if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
-      // Skip "private" directory (usually copies of global skills)
       if (entry.name === "private") continue;
+      const item = await readSkillEntry(skillsRoot, entry.name, scope, bundleMap);
+      if (item) items.push(item);
+    }
+  }
 
-      const skillDir = join(skillsRoot, entry.name);
-      const skillMd = join(skillDir, "SKILL.md");
-      if (!(await exists(skillMd))) continue;
+  // Plugin-provided skills from ~/.claude/plugins/installed_plugins.json.
+  // Each installed plugin may ship a skills/ subdirectory under its installPath.
+  // User-scope plugins contribute to Global; project-scope plugins contribute
+  // to the matching project scope (matched by encoded dir name to tolerate
+  // lossy path encoding on Windows/CJK).
+  const installedPluginsFile = join(CLAUDE_DIR, "plugins", "installed_plugins.json");
+  const installedContent = await safeReadFile(installedPluginsFile);
+  if (installedContent) {
+    let installedData;
+    try { installedData = JSON.parse(installedContent); } catch { installedData = null; }
+    const plugins = installedData?.plugins || {};
+    for (const [pluginName, installs] of Object.entries(plugins)) {
+      for (const inst of installs || []) {
+        const isUserScope = inst.scope === "user";
+        const isProjectScope = inst.scope === "project" && inst.projectPath;
 
-      const s = await safeStat(skillMd);
-      const content = await safeReadFile(skillMd);
+        let belongs = false;
+        if (scope.id === "global" && isUserScope) {
+          belongs = true;
+        } else if (scope.type === "project" && isProjectScope) {
+          // Compare by encoded dir name so a plugin installed from
+          // 團隊模式_第一代 still matches the (collided) scope derived
+          // from 團隊模式_第二代 sessions.
+          const pluginEncoded = encodeClaudeProjectName(inst.projectPath);
+          if (pluginEncoded === scope.id) belongs = true;
+          // Also accept exact repoDir match as a fallback
+          else if (scope.repoDir && inst.projectPath.toLowerCase() === scope.repoDir.toLowerCase()) {
+            belongs = true;
+          }
+        }
+        if (!belongs) continue;
 
-      // Extract description: first meaningful paragraph line after the heading
-      let description = "";
-      if (content) {
-        const lines = content.split("\n");
-        let pastHeading = false;
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (trimmed.startsWith("# ")) { pastHeading = true; continue; }
-          if (!pastHeading) continue;
-          // Skip empty lines, frontmatter-like lines, code blocks, list items
-          if (!trimmed) continue;
-          if (trimmed.startsWith("```") || trimmed.startsWith("-") || trimmed.startsWith("|")) continue;
-          if (trimmed.match(/^\w+:\s/)) continue; // skip "name: foo" style lines
-          if (trimmed.startsWith("##")) continue;
-          description = trimmed.slice(0, 120);
-          break;
+        const pluginSkillsDir = join(inst.installPath, "skills");
+        if (!(await exists(pluginSkillsDir))) continue;
+
+        let entries;
+        try {
+          entries = await readdir(pluginSkillsDir, { withFileTypes: true });
+        } catch { continue; }
+        for (const entry of entries) {
+          if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+          if (entry.name === "private") continue;
+          const item = await readSkillEntry(pluginSkillsDir, entry.name, scope, bundleMap, pluginName);
+          if (item) items.push(item);
         }
       }
-
-      // Count files in skill directory
-      const allFiles = await readdir(skillDir, { withFileTypes: true });
-      const fileCount = allFiles.filter(f => f.isFile()).length;
-
-      // Total size of skill directory
-      let totalSize = 0;
-      for (const f of allFiles.filter(f => f.isFile())) {
-        const fs = await safeStat(join(skillDir, f.name));
-        if (fs) totalSize += fs.size;
-      }
-
-      // Bundle detection from skills-lock.json
-      const bundleInfo = bundleMap.get(entry.name);
-
-      items.push({
-        category: "skill",
-        scopeId: scope.id,
-        name: entry.name,
-        fileName: entry.name, // directory name
-        description,
-        subType: "skill",
-        size: formatSize(totalSize),
-        sizeBytes: totalSize,
-        fileCount,
-        mtime: s ? s.mtime.toISOString().slice(0, 16) : "",
-        ctime: s ? s.birthtime.toISOString().slice(0, 16) : "",
-        path: skillDir,
-        bundle: bundleInfo?.source || null,
-      });
     }
   }
 
