@@ -158,7 +158,7 @@ async function getSettingsOverrides() {
  * Strategy: starting from root, greedily match the longest existing directory
  * at each level by consuming segments from the encoded name.
  */
-async function resolveEncodedProjectPath(encoded) {
+export async function resolveEncodedProjectPath(encoded) {
   const segments = encoded.replace(/^-/, "").split("-");
   let rootPath = "/";
   let startIdx = 0;
@@ -186,7 +186,7 @@ async function resolveEncodedProjectPath(encoded) {
     let entries;
     try {
       entries = await readdir(currentPath, { withFileTypes: true });
-      entries = entries.filter(e => e.isDirectory());
+      entries = entries.filter(e => e.isDirectory() || e.isSymbolicLink());
     } catch {
       return null;
     }
