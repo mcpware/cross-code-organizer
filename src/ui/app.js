@@ -76,6 +76,7 @@ let toastTimer = null;
 let detailPreviewKey = null;
 let mcpDisabledNames = new Set(); // disabled MCP server names for current scope
 let mcpDisabledScopeId = null;   // which scope the disabled list was loaded for
+let lastBackupFolder = "~/.claude-backups/latest";
 
 const uiState = {
   expandedScopes: new Set(),
@@ -1900,6 +1901,7 @@ async function openBackupModal() {
   try {
     const status = await fetchJson("/api/backup/status");
     if (!status.ok) return;
+    if (status.backupDir) lastBackupFolder = `${status.backupDir}/latest`;
 
     // Header: last run
     const ago = timeAgo(status.lastRun);
@@ -1938,13 +1940,16 @@ async function openBackupModal() {
     // Schedule section
     const checkbox = document.getElementById("bkpSchedEnabled");
     const schedLabel = document.getElementById("bkpSchedEnabledLabel");
-    checkbox.checked = status.schedulerInstalled;
-    schedLabel.textContent = status.schedulerInstalled ? "Enabled" : "Not installed";
-    document.getElementById("bkpSchedBody").classList.toggle("disabled", !status.schedulerInstalled);
+    const schedulerSupported = status.schedulerSupported !== false;
+    checkbox.checked = schedulerSupported && status.schedulerInstalled;
+    schedLabel.textContent = schedulerSupported
+      ? (status.schedulerInstalled ? "Enabled" : "Not installed")
+      : "Unavailable";
+    document.getElementById("bkpSchedBody").classList.toggle("disabled", !schedulerSupported || !status.schedulerInstalled);
     document.getElementById("bkpSchedDesc").textContent =
-      status.schedulerInstalled ? `Every ${status.interval || 4} hours + on boot` : "Not running";
+      !schedulerSupported ? "Manual backups only" : status.schedulerInstalled ? `Every ${status.interval || 4} hours + on boot` : "Not running";
     document.getElementById("bkpSchedNext").textContent =
-      status.schedulerInstalled ? "Background scheduler active" : "";
+      !schedulerSupported ? "Use Back Up Now or Sync Now for this harness" : status.schedulerInstalled ? "Background scheduler active" : "";
 
     // Set interval selector to current value
     const sel = document.getElementById("bkpInterval");
@@ -2067,7 +2072,7 @@ function setupBackupModal() {
 
   // ── Open Backup Folder ──
   document.getElementById("bkpOpenFolder").addEventListener("click", () => {
-    toast("Backup folder: ~/.claude-backups/latest", false, null, true);
+    toast(`Backup folder: ${lastBackupFolder}`, false, null, true);
   });
 
   // ── Configure Remote (inline edit) ──

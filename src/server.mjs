@@ -48,7 +48,7 @@ async function checkForUpdate() {
 const HOME = homedir();
 const CLAUDE_DIR = join(HOME, ".claude");
 const BACKUP_DIR = join(HOME, ".claude-backups");
-const BACKUP_CONFIG = join(BACKUP_DIR, "config.json");
+const BACKUP_EXCLUDED_CATEGORIES = new Set(["setting", "hook", "session", "history", "shell", "runtime"]);
 
 /**
  * Validate that a file path is within allowed directories.
@@ -103,6 +103,49 @@ function invalidateCachedData(harnessId = getDefaultAdapterId()) {
 async function getHarnessOperations(harnessId = getDefaultAdapterId()) {
   const adapter = await getAdapter(harnessId);
   return adapter.operations || { moveItem, deleteItem, getValidDestinations };
+}
+
+async function getHarnessPathInfo(harnessId = getDefaultAdapterId()) {
+  const adapter = await getAdapter(harnessId);
+  const paths = adapter.getPaths?.({
+    home: HOME,
+    cwd: process.cwd(),
+    platform: process.platform,
+    env: process.env,
+  }) || {};
+  const rootDir = paths.rootDir || CLAUDE_DIR;
+  const backupDir = paths.backupDir || BACKUP_DIR;
+  return {
+    rootDir,
+    backupDir,
+    backupConfig: join(backupDir, "config.json"),
+  };
+}
+
+function exportableBackupItems(items) {
+  return items.filter((item) => !BACKUP_EXCLUDED_CATEGORIES.has(item.category));
+}
+
+async function ensureBackupRepo(backupDir) {
+  const { mkdir: mk, writeFile: wf } = await import("node:fs/promises");
+  const { execFile } = await import("node:child_process");
+  const { promisify: prom } = await import("node:util");
+  const { isGitRepo, initRepo } = await import("./backup-git.mjs");
+  const exec = prom(execFile);
+
+  await mk(backupDir, { recursive: true });
+  const created = !(await isGitRepo(backupDir));
+  if (created) {
+    await initRepo(backupDir);
+    await wf(join(backupDir, ".gitignore"), "backup-*/\n*.log\nconfig.json\n");
+  }
+
+  try { await exec("git", ["config", "user.email"], { cwd: backupDir }); }
+  catch { await exec("git", ["config", "user.email", "cco-backup@localhost"], { cwd: backupDir }); }
+  try { await exec("git", ["config", "user.name"], { cwd: backupDir }); }
+  catch { await exec("git", ["config", "user.name", "CCO Backup"], { cwd: backupDir }); }
+
+  return created;
 }
 
 // ── Request helpers ──────────────────────────────────────────────────
@@ -668,8 +711,9 @@ async function handleRequest(req, res) {
   // POST /api/export — export all scanned items to a folder
   if (path === "/api/export" && req.method === "POST") {
     let { exportDir } = await readBody(req);
-    // Default to ~/.claude/exports/ if no path provided
-    if (!exportDir) exportDir = join(CLAUDE_DIR, "exports");
+    const { rootDir } = await getHarnessPathInfo(harnessId);
+    // Default to the selected harness config directory if no path provided.
+    if (!exportDir) exportDir = join(rootDir, "exports");
     if (!isAbsolute(exportDir)) {
       return json(res, { ok: false, error: "Invalid exportDir (must be absolute path)" }, 400);
     }
@@ -740,22 +784,24 @@ async function handleRequest(req, res) {
       const { readFile: rf } = await import("node:fs/promises");
       const { isGitRepo, hasRemote, getRemoteUrl, getLastCommit } = await import("./backup-git.mjs");
       const { isInstalled } = await import("./backup-scheduler.mjs");
+      const { backupDir, backupConfig } = await getHarnessPathInfo(harnessId);
 
       let config = {};
-      try { config = JSON.parse(await rf(BACKUP_CONFIG, "utf-8")); } catch {}
+      try { config = JSON.parse(await rf(backupConfig, "utf-8")); } catch {}
 
-      const gitRepo = await isGitRepo(BACKUP_DIR);
-      const remote = gitRepo ? await hasRemote(BACKUP_DIR) : false;
-      const remoteUrl = remote ? await getRemoteUrl(BACKUP_DIR) : null;
-      const lastCommit = gitRepo ? await getLastCommit(BACKUP_DIR) : { msg: null, date: null };
-      const schedulerInstalled = await isInstalled();
+      const gitRepo = await isGitRepo(backupDir);
+      const remote = gitRepo ? await hasRemote(backupDir) : false;
+      const remoteUrl = remote ? await getRemoteUrl(backupDir) : null;
+      const lastCommit = gitRepo ? await getLastCommit(backupDir) : { msg: null, date: null };
+      const schedulerSupported = harnessId === getDefaultAdapterId();
+      const schedulerInstalled = schedulerSupported ? await isInstalled() : false;
 
       const counts = cachedData ? { ...cachedData.counts } : {};
       const totalItems = cachedData ? cachedData.items.length : 0;
       const scopeCount = cachedData ? cachedData.scopes.length : 0;
 
       return json(res, {
-        ok: true,
+        ok: true, backupDir,
         counts, totalItems, scopeCount,
         lastRun: config.lastRun || null,
         lastCopied: config.lastCopied || 0,
@@ -766,6 +812,7 @@ async function handleRequest(req, res) {
         remoteUrl,
         lastCommitMsg: lastCommit.msg,
         lastCommitDate: lastCommit.date,
+        schedulerSupported,
         schedulerInstalled,
       });
     } catch (err) {
@@ -780,17 +827,17 @@ async function handleRequest(req, res) {
       const { basename } = await import("node:path");
       const { commitAndPush } = await import("./backup-git.mjs");
       const { readFile: rf } = await import("node:fs/promises");
+      const { backupDir, backupConfig } = await getHarnessPathInfo(harnessId);
 
       const scanData = await freshScan();
-      const latestDir = join(BACKUP_DIR, "latest");
+      await ensureBackupRepo(backupDir);
+      const latestDir = join(backupDir, "latest");
 
       try { await rm(latestDir, { recursive: true, force: true }); } catch {}
 
       let copied = 0;
       const errors = [];
-      const exportableItems = scanData.items.filter(
-        item => item.category !== "setting" && item.category !== "hook"
-      );
+      const exportableItems = exportableBackupItems(scanData.items);
 
       for (const item of exportableItems) {
         try {
@@ -815,11 +862,11 @@ async function handleRequest(req, res) {
         exportedAt: new Date().toISOString(), totalItems: exportableItems.length, copied, errors: errors.length, counts: scanData.counts,
       }, null, 2) + "\n");
 
-      const gitResult = await commitAndPush(BACKUP_DIR);
+      const gitResult = await commitAndPush(backupDir);
 
       let config = {};
-      try { config = JSON.parse(await rf(BACKUP_CONFIG, "utf-8")); } catch {}
-      await wf(BACKUP_CONFIG, JSON.stringify({ ...config, lastRun: new Date().toISOString(), lastCopied: copied, lastErrors: errors.length }, null, 2) + "\n");
+      try { config = JSON.parse(await rf(backupConfig, "utf-8")); } catch {}
+      await wf(backupConfig, JSON.stringify({ ...config, lastRun: new Date().toISOString(), lastCopied: copied, lastErrors: errors.length }, null, 2) + "\n");
 
       return json(res, { ok: true, copied, errors: errors.length, gitResult, counts: scanData.counts, totalItems: scanData.items.length, scopeCount: scanData.scopes.length });
     } catch (err) {
@@ -831,7 +878,9 @@ async function handleRequest(req, res) {
   if (path === "/api/backup/sync" && req.method === "POST") {
     try {
       const { commitAndPush } = await import("./backup-git.mjs");
-      const result = await commitAndPush(BACKUP_DIR);
+      const { backupDir } = await getHarnessPathInfo(harnessId);
+      await ensureBackupRepo(backupDir);
+      const result = await commitAndPush(backupDir);
       return json(res, { ok: true, ...result });
     } catch (err) {
       return json(res, { ok: false, error: err.message }, 500);
@@ -844,6 +893,11 @@ async function handleRequest(req, res) {
       const { intervalHours = 4 } = await readBody(req);
       const { readFile: rf, writeFile: wf } = await import("node:fs/promises");
       const { install, getNodeAndCliPath } = await import("./backup-scheduler.mjs");
+      const { backupConfig } = await getHarnessPathInfo(harnessId);
+
+      if (harnessId !== getDefaultAdapterId()) {
+        return json(res, { ok: false, error: "Background scheduler is currently available for Claude Code backups only." }, 400);
+      }
 
       const paths = await getNodeAndCliPath();
       if (!paths) return json(res, { ok: false, error: "Backup scheduler not initialized. Run `claude-code-backup init` first." }, 400);
@@ -851,8 +905,8 @@ async function handleRequest(req, res) {
       await install(paths.nodePath, paths.cliPath, intervalHours);
 
       let config = {};
-      try { config = JSON.parse(await rf(BACKUP_CONFIG, "utf-8")); } catch {}
-      await wf(BACKUP_CONFIG, JSON.stringify({ ...config, interval: intervalHours }, null, 2) + "\n");
+      try { config = JSON.parse(await rf(backupConfig, "utf-8")); } catch {}
+      await wf(backupConfig, JSON.stringify({ ...config, interval: intervalHours }, null, 2) + "\n");
 
       return json(res, { ok: true, interval: intervalHours });
     } catch (err) {
@@ -865,21 +919,17 @@ async function handleRequest(req, res) {
     try {
       const { url } = await readBody(req);
       if (!url) return json(res, { ok: false, error: "Missing url" }, 400);
-      const { mkdir: mk, writeFile: wf } = await import("node:fs/promises");
       const { execFile } = await import("node:child_process");
       const { promisify: prom } = await import("node:util");
       const exec = prom(execFile);
-      const { isGitRepo, hasRemote, addRemote, initRepo } = await import("./backup-git.mjs");
+      const { hasRemote, addRemote } = await import("./backup-git.mjs");
+      const { backupDir } = await getHarnessPathInfo(harnessId);
 
-      await mk(BACKUP_DIR, { recursive: true });
-      if (!(await isGitRepo(BACKUP_DIR))) {
-        await initRepo(BACKUP_DIR);
-        await wf(join(BACKUP_DIR, ".gitignore"), "backup-*/\n*.log\nconfig.json\n");
-      }
-      if (await hasRemote(BACKUP_DIR)) {
-        await exec("git", ["remote", "set-url", "origin", url], { cwd: BACKUP_DIR });
+      await ensureBackupRepo(backupDir);
+      if (await hasRemote(backupDir)) {
+        await exec("git", ["remote", "set-url", "origin", url], { cwd: backupDir });
       } else {
-        await addRemote(BACKUP_DIR, url);
+        await addRemote(backupDir, url);
       }
       return json(res, { ok: true, url });
     } catch (err) {

@@ -188,7 +188,7 @@ const capabilities = {
   mcpSecurity: true,
   sessions: true,
   effective: false,
-  backup: false,
+  backup: true,
 };
 
 const CODEX_PROMPTS = {
