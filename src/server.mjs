@@ -158,6 +158,7 @@ async function handleRequest(req, res) {
         displayName: adapter.displayName,
         shortName: adapter.shortName,
         icon: adapter.icon,
+        iconSvg: adapter.iconSvg,
         executable: adapter.executable,
         categories: adapter.categories,
         scopeTypes: adapter.scopeTypes,

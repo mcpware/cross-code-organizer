@@ -498,6 +498,8 @@ const noEffectiveModel = {
   ancestorCategories: [],
 };
 
+const OPENAI_LOGOMARK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="7" fill="currentColor"/></svg>';
+
 /**
  * @type {import("../interface.mjs").HarnessAdapter}
  */
@@ -505,7 +507,8 @@ export const codexAdapter = {
   id: "codex",
   displayName: "Codex CLI",
   shortName: "Codex",
-  icon: "◈",
+  icon: "●",
+  iconSvg: OPENAI_LOGOMARK_SVG,
   executable: "codex",
   categories,
   scopeTypes,

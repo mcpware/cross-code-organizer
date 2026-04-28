@@ -391,7 +391,13 @@ function updateHarnessBranding() {
 
   document.title = "Cross-Code Organizer (CCO)";
   const logo = document.getElementById("harnessLogoIcon");
-  if (logo) logo.textContent = icon;
+  if (logo) {
+    if (harness.iconSvg) {
+      logo.innerHTML = harness.iconSvg;
+    } else {
+      logo.textContent = icon;
+    }
+  }
   const title = document.getElementById("sidebarTitle");
   if (title) title.textContent = "Cross-Code Organizer (CCO)";
   const loading = document.getElementById("loading");

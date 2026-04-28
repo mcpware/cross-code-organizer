@@ -12,6 +12,7 @@ function adapterSummary(adapter) {
     displayName: adapter.displayName,
     shortName: adapter.shortName,
     icon: adapter.icon,
+    iconSvg: adapter.iconSvg,
   };
 }
 
@@ -78,7 +79,7 @@ export async function getAdapter(id) {
 /**
  * List registered adapter descriptors.
  *
- * @returns {Promise<Array<{ id: string, displayName: string, shortName: string, icon: string }>>}
+ * @returns {Promise<Array<{ id: string, displayName: string, shortName: string, icon: string, iconSvg?: string }>>}
  */
 export async function listAdapters() {
   await ensureDiscovered();

@@ -135,6 +135,7 @@
  * @property {string} displayName
  * @property {string} shortName
  * @property {string} icon
+ * @property {string} [iconSvg]
  * @property {string} executable
  */
 
@@ -158,6 +159,7 @@
  * @property {string} displayName
  * @property {string} shortName
  * @property {string} icon
+ * @property {string} [iconSvg]
  * @property {string} executable
  * @property {CategoryDef[]} categories
  * @property {ScopeTypeDef[]} scopeTypes

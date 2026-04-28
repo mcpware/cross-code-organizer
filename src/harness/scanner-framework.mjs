@@ -41,6 +41,7 @@ function descriptorFor(adapter) {
     displayName: adapter.displayName,
     shortName: adapter.shortName,
     icon: adapter.icon,
+    iconSvg: adapter.iconSvg,
     executable: adapter.executable,
   };
 }

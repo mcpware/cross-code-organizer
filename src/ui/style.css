@@ -162,6 +162,12 @@ body {
   font-size: 1rem;
   line-height: 1;
 }
+
+.harness-logo-icon svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
 .sidebar-title { font-size: 0.95rem; font-weight: 900; color: var(--sidebar-text-bright); letter-spacing: -0.3px; }
 
 .harness-selector-wrap {
