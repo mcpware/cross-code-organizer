@@ -358,8 +358,7 @@ function setupHarnessSelector() {
     <span class="harness-selector-label">Harness</span>
     <select class="harness-selector" id="harnessSelector"></select>`;
 
-  const securityBtn = document.getElementById("securityScanBtn");
-  sidebar.insertBefore(wrap, securityBtn || document.getElementById("searchInput"));
+  sidebar.insertBefore(wrap, document.getElementById("searchInput"));
   updateHarnessSelector();
 
   document.getElementById("harnessSelector").addEventListener("change", async (event) => {
