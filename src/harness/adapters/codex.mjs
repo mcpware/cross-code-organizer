@@ -191,6 +191,108 @@ const capabilities = {
   backup: false,
 };
 
+const CODEX_PROMPTS = {
+  actions: {
+    common: {
+      unlockedInfo: {
+        ico: "●",
+        label: "",
+        prompt: null,
+        info: "Use these prompts for guided changes - Codex will inspect the file, explain impact, and confirm before editing.",
+      },
+      explain: {
+        ico: "📋",
+        label: "Explain This",
+        prompt: "I have a Codex CLI {{category}} called \"{{name}}\" at:\n{{path}}\n\nPlease inspect it and explain:\n1. What does this {{category}} do?\n2. How does Codex load or use it?\n3. What would break if I removed or changed it?\n4. Are there related config files that reference it?",
+      },
+    },
+    categories: {
+      session: [
+        {
+          ico: "💬",
+          label: "Resume Session",
+          prompt: "{{cdCmd}}{{executable}} resume {{sessionId}}\n\n# Session file: {{path}}",
+        },
+        {
+          ico: "📋",
+          label: "Summarize",
+          prompt: "I have a Codex CLI session at:\n{{path}}\n\nPlease read this session file and summarize:\n1. What was this session about?\n2. What was accomplished?\n3. Were there unfinished tasks or pending actions?\n4. What files or commands were involved?",
+        },
+      ],
+      config: [
+        { use: "common.explain" },
+        {
+          ico: "✏️",
+          label: "Edit Config",
+          prompt: "I want to modify this Codex CLI config item: \"{{name}}\"\nPath: {{path}}\nType: {{subType}}\n\nBefore changing:\n1. Read the current TOML/Markdown/JSON content\n2. Explain the current setting or instruction\n3. Ask what I want to change\n4. Show the exact before/after diff\n5. Warn if this affects sandboxing, approvals, model selection, MCP, or project trust\n6. Only save after I confirm",
+        },
+      ],
+      memory: [
+        { use: "common.explain" },
+        {
+          ico: "✏️",
+          label: "Edit Memory",
+          prompt: "I want to edit this Codex CLI memory: \"{{name}}\"\nPath: {{path}}\n\nBefore editing:\n1. Read the current memory\n2. Explain what context it gives Codex\n3. Ask what I want to change\n4. Show the before/after diff\n5. Only save after I confirm",
+        },
+      ],
+      skill: [
+        { use: "common.explain" },
+        {
+          ico: "✏️",
+          label: "Edit Skill",
+          prompt: "I want to edit this Codex CLI skill: \"{{name}}\"\nPath: {{path}}\n\nBefore editing:\n1. Read SKILL.md and related files in this skill directory\n2. Explain when this skill triggers and what it instructs Codex to do\n3. Ask what I want to change\n4. Show the before/after diff\n5. Warn if the change could affect automatic skill selection\n6. Only save after I confirm",
+        },
+      ],
+      mcp: [
+        {
+          ico: "📋",
+          label: "Explain This",
+          prompt: "I have a Codex CLI MCP server called \"{{name}}\" configured at:\n{{path}}\n\nConfig:\n{{mcpConfigJson}}\n\nPlease explain:\n1. What this server likely does\n2. How Codex connects to it\n3. Which command, args, URL, and env vars matter\n4. Whether the command or URL looks reachable from this machine",
+        },
+        {
+          ico: "🔧",
+          label: "Edit Config",
+          prompt: "I want to modify this Codex CLI MCP server: \"{{name}}\"\nConfig path: {{path}}\nCurrent config:\n{{mcpConfigJson}}\n\nBefore changing:\n1. Read the current config.toml entry\n2. Show the current command, args, url, and env settings\n3. Ask what I want to change\n4. Show the before/after TOML diff\n5. Warn if this could break Codex MCP tools\n6. Only save after I confirm",
+        },
+        {
+          ico: "🩺",
+          label: "Fix Server",
+          when: "securitySeverityUnreachable",
+          prompt: "My Codex CLI MCP server \"{{name}}\" is unreachable during a CCO security scan.\nConfig path: {{path}}\nConfig:\n{{mcpConfigJson}}\n\nPlease diagnose and fix:\n1. Check whether the command exists: which {{mcpCommand}}\n2. If it uses npx, check the package or args\n3. Check required env vars\n4. Try running the server command manually to capture the error\n5. Suggest the safest fix\n6. Only make changes after I confirm",
+        },
+      ],
+      profile: [
+        { use: "common.explain" },
+        {
+          ico: "✏️",
+          label: "Modify Profile",
+          prompt: "I want to modify this Codex CLI profile: \"{{name}}\"\nPath: {{path}}\n\nBefore changing:\n1. Read the profile entry in config.toml\n2. Explain model, sandbox, and approval behavior\n3. Ask what I want to change\n4. Show the exact TOML diff\n5. Only save after I confirm",
+        },
+      ],
+      rule: [
+        { use: "common.explain" },
+        {
+          ico: "✏️",
+          label: "Modify Rule",
+          prompt: "I want to modify this Codex CLI rule: \"{{name}}\"\nPath: {{path}}\n\nBefore changing:\n1. Read the rule\n2. Explain what behavior it enforces\n3. Ask what I want to change\n4. Show the before/after diff\n5. Only save after I confirm",
+        },
+      ],
+      plugin: [
+        { use: "common.explain" },
+        {
+          ico: "🗑️",
+          label: "Remove",
+          prompt: "I want to remove this Codex CLI plugin: \"{{name}}\"\nPath: {{path}}\n\nBefore removing:\n1. Read its plugin.json and any bundled skills/tools metadata\n2. Explain what features it provides\n3. Check whether any skills or config reference it\n4. Tell me what will stop working\n5. Only remove after I explicitly confirm",
+        },
+      ],
+      history: [{ use: "common.explain" }],
+      shell: [{ use: "common.explain" }],
+      runtime: [{ use: "common.explain" }],
+      default: [{ use: "common.explain" }],
+    },
+  },
+};
+
 function projectScopeId(projectPath) {
   return `project:${Buffer.from(projectPath, "utf-8").toString("base64url")}`;
 }
@@ -987,6 +1089,7 @@ export const codexAdapter = {
   categories,
   scopeTypes,
   capabilities,
+  prompts: CODEX_PROMPTS,
   getPaths(ctx) {
     const rootDir = codexDir(ctx);
     return {

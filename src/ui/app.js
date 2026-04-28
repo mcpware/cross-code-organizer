@@ -1355,7 +1355,7 @@ function renderItem(item) {
   const sessionActions = isSessionTranscript(item) && hasCapability("sessions") ? `
     <span class="item-actions">
       <button type="button" class="act-btn act-resume" data-action="resume" title="Copy resume command">Resume</button>
-      <button type="button" class="act-btn act-distill" data-action="distill" title="Distill session (backup + clean)">Distill</button>
+      ${canDistillSession(item) ? `<button type="button" class="act-btn act-distill" data-action="distill" title="Distill session (backup + clean)">Distill</button>` : ""}
     </span>` : null;
 
   const actions = sessionActions || ((item.locked || isFromGlobal) ? (mcpToggleBtn ? `<span class="item-actions">${mcpToggleBtn}</span>` : "") : `
@@ -1743,13 +1743,17 @@ function isSessionTranscript(item) {
   return item?.category === "session" && item.path?.endsWith(".jsonl") && item.subType !== "session-index";
 }
 
+function canDistillSession(item) {
+  return isSessionTranscript(item) && getHarnessDescriptor().id === "claude";
+}
+
 function getPromptTemplates() {
   return data?.adapterData?.prompts || data?.prompts || null;
 }
 
 function getPromptContext(item, extra = {}) {
   const scope = getScopeById(item.scopeId);
-  const sessionId = item.fileName?.replace(/\.jsonl$/, "") || "";
+  const sessionId = item.sessionId || item.fileName?.replace(/\.jsonl$/, "") || "";
   const cdCmd = scope?.repoDir ? `cd ${scope.repoDir} && ` : "";
   return {
     category: item.category,
