@@ -146,6 +146,7 @@ async function init() {
     selectedScopeId = getInitialSelectedScopeId();
     initializeScopeState();
     setupUi();
+    updateHarnessBranding();
     updateCapabilityVisibility();
     setupScopeNotice();
     // Load cached scan results + check for new servers BEFORE first render
@@ -273,7 +274,8 @@ async function switchHarness(harnessId) {
   localStorage.setItem("cco-selected-harness", harnessId);
   const loading = document.getElementById("loading");
   if (loading) {
-    loading.textContent = "Scanning selected harness...";
+    const nextHarness = availableHarnesses.find((harness) => harness.id === harnessId);
+    loading.textContent = `Scanning ${(nextHarness?.displayName || nextHarness?.shortName || harnessId)} inventory...`;
     loading.classList.remove("hidden");
   }
 
@@ -303,6 +305,7 @@ async function switchHarness(harnessId) {
 
   initializeScopeState();
   updateHarnessSelector();
+  updateHarnessBranding();
   updateCapabilityVisibility();
   if (hasCapability("mcpSecurity")) {
     await loadCachedSecurityResults();
@@ -318,7 +321,7 @@ function setupScopeNotice() {
   if (!tree) return;
   const notice = document.createElement("div");
   notice.className = "scope-notice";
-  notice.innerHTML = `<span class="scope-notice-dismiss" id="scopeNoticeDismiss">✕</span><strong>How scopes work:</strong> Different categories have different inheritance rules. Use <strong>✦ Show Effective</strong> to see what actually applies in each project. Hover any category pill for its specific rule.`;
+  notice.innerHTML = `<span class="scope-notice-dismiss" id="scopeNoticeDismiss">✕</span><strong>How ${esc(getHarnessShortName())} scopes work:</strong> Different categories can have different inheritance rules. Use <strong>✦ Show Effective</strong> to see what actually applies in each project. Hover any category pill for its specific rule.`;
   tree.parentElement.insertBefore(notice, tree);
   document.getElementById("scopeNoticeDismiss").addEventListener("click", () => {
     localStorage.setItem(NOTICE_KEY, "1");
@@ -381,6 +384,30 @@ function updateHarnessSelector() {
       ${esc(`${harness.icon || ""} ${harness.displayName || harness.shortName || harness.id}`.trim())}
     </option>`).join("");
   select.disabled = harnesses.length <= 1;
+}
+
+function updateHarnessBranding() {
+  const harness = getHarnessDescriptor();
+  const name = getHarnessName();
+  const shortName = getHarnessShortName();
+  const icon = harness.icon || "✳️";
+  const executable = getHarnessExecutable();
+
+  document.title = `${name} Organizer`;
+  const logo = document.getElementById("harnessLogoIcon");
+  if (logo) logo.textContent = icon;
+  const title = document.getElementById("sidebarTitle");
+  if (title) title.textContent = `${shortName} Organizer`;
+  const loading = document.getElementById("loading");
+  if (loading) loading.textContent = `Scanning ${name} inventory...`;
+  const promptLabel = document.getElementById("detailPromptLabel");
+  if (promptLabel) promptLabel.textContent = `${shortName} Prompt`;
+  const footerHint = document.getElementById("sidebarFooterHint");
+  if (footerHint) {
+    footerHint.innerHTML = executable === "claude"
+      ? `Type <code>/cco</code> in ${esc(name)} to reopen`
+      : `Selected harness: <code>${esc(executable)}</code>`;
+  }
 }
 
 function updateCapabilityVisibility() {
@@ -903,6 +930,7 @@ function renderAll() {
   normalizeState();
   updateCapabilityVisibility();
   updateHarnessSelector();
+  updateHarnessBranding();
   renderSidebar();
   renderContentHeader();
   renderPills();
@@ -1700,6 +1728,11 @@ function getHarnessDescriptor() {
 function getHarnessName() {
   const harness = getHarnessDescriptor();
   return harness.displayName || harness.shortName || harness.id || "Selected Harness";
+}
+
+function getHarnessShortName() {
+  const harness = getHarnessDescriptor();
+  return harness.shortName || harness.displayName || harness.id || "Harness";
 }
 
 function getHarnessExecutable() {
