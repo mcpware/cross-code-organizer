@@ -757,6 +757,28 @@ body {
   white-space: pre-wrap;
 }
 
+.d-preview:has(.syntax-preview) {
+  white-space: normal;
+  padding: 0;
+}
+.syntax-preview {
+  margin: 0;
+  min-height: 100%;
+  padding: 14px 16px;
+  overflow: auto;
+  white-space: pre;
+  font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+.syntax-key { color: oklch(0.54 0.15 245); font-weight: 600; }
+.syntax-string { color: oklch(0.48 0.12 180); }
+.syntax-section { color: oklch(0.58 0.16 55); font-weight: 700; }
+.dark .syntax-key { color: oklch(0.72 0.12 245); }
+.dark .syntax-string { color: oklch(0.72 0.10 180); }
+.dark .syntax-section { color: oklch(0.76 0.13 55); }
+
 /* ── Markdown preview (memories, skills, rules, plans, agents, commands) ── */
 .d-preview:has(.md-preview) { white-space: normal; font-family: "Lato", sans-serif; font-size: 0.8rem; line-height: 1.7; }
 .md-preview h1 { font-size: 1.15rem; font-weight: 900; color: var(--text-primary); margin: 0 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border-light); }

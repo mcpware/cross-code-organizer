@@ -2838,13 +2838,15 @@ async function loadPreview(item) {
   try {
     if (item.category === "setting") {
       if (currentKey !== detailPreviewKey) return;
-      preview.textContent = JSON.stringify(item.value, null, 2);
+      preview.textContent = "";
+      preview.innerHTML = renderHighlightedSource(JSON.stringify(item.value, null, 2), "json");
       return;
     }
 
     if (item.category === "mcp") {
       if (currentKey !== detailPreviewKey) return;
-      preview.textContent = JSON.stringify(item.mcpConfig || {}, null, 2);
+      preview.textContent = "";
+      preview.innerHTML = renderHighlightedSource(JSON.stringify(item.mcpConfig || {}, null, 2), "json");
       return;
     }
 
@@ -2854,7 +2856,12 @@ async function loadPreview(item) {
       if (res.ok) {
         const settings = JSON.parse(res.content);
         const hookConfig = settings.hooks?.[item.name];
-        preview.textContent = hookConfig ? JSON.stringify(hookConfig, null, 2) : (item.description || "(no content)");
+        if (hookConfig) {
+          preview.textContent = "";
+          preview.innerHTML = renderHighlightedSource(JSON.stringify(hookConfig, null, 2), "json");
+        } else {
+          preview.textContent = item.description || "(no content)";
+        }
       } else {
         preview.textContent = item.description || "(no content)";
       }
@@ -2886,9 +2893,11 @@ async function loadPreview(item) {
     if (currentKey !== detailPreviewKey) return;
     if (!res.ok) { preview.textContent = res.error || "Cannot load preview"; return; }
 
-    // Render markdown for file-based categories (.md files)
-    const isMd = filePath.endsWith(".md") || ["memory", "skill", "rule", "plan", "agent", "command", "config"].includes(item.category);
-    if (isMd) {
+    const sourceLanguage = getSourceLanguage(filePath, item);
+    if (sourceLanguage) {
+      preview.textContent = "";
+      preview.innerHTML = renderHighlightedSource(res.content, sourceLanguage);
+    } else if (filePath.endsWith(".md")) {
       preview.textContent = "";
       preview.innerHTML = `<div class="md-preview">${renderMarkdown(res.content)}</div>`;
     } else {
@@ -3732,6 +3741,68 @@ function esc(value) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function getSourceLanguage(filePath, item) {
+  const name = (filePath || item?.path || item?.name || "").toLowerCase();
+  if (item?.category === "setting" || item?.category === "mcp" || item?.category === "hook") return "json";
+  if (name.endsWith(".json") || name.endsWith(".jsonc")) return "json";
+  if (name.endsWith(".toml")) return "toml";
+  if (name.endsWith(".yaml") || name.endsWith(".yml")) return "yaml";
+  if (name.endsWith(".md") || name.endsWith(".markdown")) return "markdown";
+  return null;
+}
+
+function renderHighlightedSource(content, language) {
+  return `<pre class="syntax-preview syntax-${esc(language)}">${highlightSource(content || "", language)}</pre>`;
+}
+
+function highlightSource(content, language) {
+  if (language === "json") return highlightJsonSource(content);
+  return content.split("\n").map((line) => highlightSourceLine(line, language)).join("\n");
+}
+
+function highlightJsonSource(content) {
+  const tokenRe = /("(?:\\.|[^"\\])*")(\s*:)?/g;
+  let out = "";
+  let last = 0;
+  for (const match of content.matchAll(tokenRe)) {
+    out += esc(content.slice(last, match.index));
+    const cls = match[2] ? "syntax-key" : "syntax-string";
+    out += `<span class="${cls}">${esc(match[1])}</span>${esc(match[2] || "")}`;
+    last = match.index + match[0].length;
+  }
+  return out + esc(content.slice(last));
+}
+
+function highlightSourceLine(line, language) {
+  if (language === "toml" && /^\s*\[[^\]]+\]\s*$/.test(line)) {
+    return `<span class="syntax-section">${esc(line)}</span>`;
+  }
+  if (language === "markdown" && /^\s{0,3}#{1,6}\s+/.test(line)) {
+    return `<span class="syntax-section">${esc(line)}</span>`;
+  }
+
+  const keyMatch = line.match(/^(\s*)([A-Za-z0-9_.-]+)(\s*[:=]\s*)(.*)$/);
+  if (keyMatch) {
+    return `${esc(keyMatch[1])}<span class="syntax-key">${esc(keyMatch[2])}</span>${esc(keyMatch[3])}${highlightStrings(keyMatch[4], language)}`;
+  }
+
+  return highlightStrings(line, language);
+}
+
+function highlightStrings(text, language) {
+  const stringRe = language === "markdown"
+    ? /(`[^`]*`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/g
+    : /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/g;
+  let out = "";
+  let last = 0;
+  for (const match of text.matchAll(stringRe)) {
+    out += esc(text.slice(last, match.index));
+    out += `<span class="syntax-string">${esc(match[0])}</span>`;
+    last = match.index + match[0].length;
+  }
+  return out + esc(text.slice(last));
 }
 
 /**
