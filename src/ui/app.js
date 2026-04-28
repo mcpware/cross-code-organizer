@@ -11,9 +11,50 @@ const { EFFECTIVE_RULES, hasEffectiveRule, getAncestorScopes: _getAncestorScopes
         computeEffectiveSets: _computeEffectiveSets, getEffectiveItems } = window.Effective;
 
 // Helper: get effectiveRule for a category (returns string or undefined)
-function getEffectiveRule(category) { return EFFECTIVE_RULES[category] || null; }
+function getEffectiveRule(category) {
+  const categoryDef = getCategoryConfig(category);
+  if (categoryDef.effectiveRule) return categoryDef.effectiveRule;
+  const rule = data?.effective?.rules?.find?.((entry) => entry.category === category)?.rule;
+  return rule || null;
+}
+
+function getCategoryDefs() {
+  const harnessCategories = availableHarnesses.find((harness) => harness.id === selectedHarnessId)?.categories || [];
+  return [...(data?.categories || harnessCategories)].sort((a, b) => {
+    const order = (a.order ?? 999) - (b.order ?? 999);
+    return order || a.label.localeCompare(b.label);
+  });
+}
+
+function getCategoryOrder() {
+  return getCategoryDefs().map((category) => category.id);
+}
+
+function getCategoryConfig(category) {
+  return data?.categories?.find?.((entry) => entry.id === category) || {
+    ...FALLBACK_CATEGORY,
+    id: category,
+    label: capitalize(category),
+    filterLabel: capitalize(category),
+  };
+}
+
+function getScopeTypeConfig(type) {
+  return data?.scopeTypes?.find?.((entry) => entry.id === type) || FALLBACK_SCOPE_TYPE;
+}
+
+function getScopeIcon(type) {
+  return getScopeTypeConfig(type).icon || FALLBACK_SCOPE_TYPE.icon;
+}
+
+function hasCapability(name) {
+  if (!data?.capabilities) return true;
+  return data.capabilities[name] !== false;
+}
 
 let data = null;
+let availableHarnesses = [];
+let selectedHarnessId = localStorage.getItem("cco-selected-harness") || null;
 let activeFilters = new Set();
 let selectedItem = null;
 let selectedScopeId = null;
@@ -43,42 +84,8 @@ const uiState = {
   sortBy: {}, // { [catKey]: { field: "size"|"date"|"name", dir: "asc"|"desc" } }
 };
 
-const CATEGORY_ORDER = ["skill", "memory", "mcp", "command", "agent", "plan", "rule", "config", "hook", "plugin", "session", "setting"];
-
-const CATEGORIES = {
-  memory: { icon: "🧠", label: "Memories", filterLabel: "Memories", group: "memory" },
-  skill:  { icon: "⚡", label: "Skills",   filterLabel: "Skills",   group: "skill" },
-  session:{ icon: "💬", label: "Sessions", filterLabel: "Sessions", group: null },
-  mcp:    { icon: "🔌", label: "MCP Servers", filterLabel: "MCP",  group: "mcp" },
-  command:{ icon: "▶️", label: "Commands", filterLabel: "Commands", group: "command" },
-  agent:  { icon: "🤖", label: "Agents",   filterLabel: "Agents",  group: "agent" },
-  plan:   { icon: "📐", label: "Plans",    filterLabel: "Plans",   group: "plan" },
-  rule:   { icon: "📏", label: "Rules",    filterLabel: "Rules",   group: null },
-  config: { icon: "⚙️", label: "Config",   filterLabel: "Config",  group: null },
-  hook:   { icon: "🪝", label: "Hooks",    filterLabel: "Hooks",   group: null },
-  plugin: { icon: "🧩", label: "Plugins",  filterLabel: "Plugins", group: null },
-  setting:{ icon: "🔧", label: "Settings", filterLabel: "Settings", group: null },
-};
-
-const ITEM_ICONS = {
-  memory: "🧠",
-  skill: "⚡",
-  session: "💬",
-  mcp: "🔌",
-  command: "▶️",
-  agent: "🤖",
-  plan: "📐",
-  rule: "📏",
-  config: "⚙️",
-  hook: "🪝",
-  plugin: "🧩",
-  setting: "🔧",
-};
-
-const SCOPE_ICONS = {
-  global: "🌐",
-  project: "📂",
-};
+const FALLBACK_CATEGORY = { icon: "📄", label: "Item", filterLabel: "Item", group: null, order: 999 };
+const FALLBACK_SCOPE_TYPE = { icon: "📂", label: "Scope", isGlobal: false };
 
 const BADGE_CLASS = {
   feedback: "ib-feedback",
@@ -124,14 +131,28 @@ const SHORT_DATE = new Intl.DateTimeFormat("en-US", {
 
 async function init() {
   try {
-    data = await fetchJson("/api/scan");
+    const harnessResponse = await fetchJson("/api/harnesses");
+    if (harnessResponse.ok) {
+      availableHarnesses = harnessResponse.harnesses || [];
+      const validHarnessIds = new Set(availableHarnesses.map((harness) => harness.id));
+      if (!selectedHarnessId || !validHarnessIds.has(selectedHarnessId)) {
+        selectedHarnessId = harnessResponse.defaultHarness || availableHarnesses[0]?.id || "claude";
+      }
+    }
+
+    data = await fetchJson(apiUrl("/api/scan"));
+    selectedHarnessId = data?.harness?.id || selectedHarnessId;
+    localStorage.setItem("cco-selected-harness", selectedHarnessId);
     selectedScopeId = getInitialSelectedScopeId();
     initializeScopeState();
     setupUi();
+    updateCapabilityVisibility();
     setupScopeNotice();
     // Load cached scan results + check for new servers BEFORE first render
-    await loadCachedSecurityResults();
-    await checkForNewMcpServers();
+    if (hasCapability("mcpSecurity")) {
+      await loadCachedSecurityResults();
+      await checkForNewMcpServers();
+    }
     renderAll();
     checkForUpdate();
   } catch (error) {
@@ -222,8 +243,72 @@ async function checkForUpdate() {
 }
 
 async function fetchJson(url, options) {
-  const res = await fetch(url, options);
+  const res = await fetch(toHarnessUrl(url), options);
   return res.json();
+}
+
+function toHarnessUrl(url) {
+  if (typeof url !== "string" || !url.startsWith("/api/")) return url;
+  if (url.startsWith("/api/harnesses") || url.startsWith("/api/version")) return url;
+  const parsed = new URL(url, window.location.origin);
+  if (selectedHarnessId && !parsed.searchParams.has("harness")) {
+    parsed.searchParams.set("harness", selectedHarnessId);
+  }
+  return `${parsed.pathname}${parsed.search}`;
+}
+
+function apiUrl(path, params = {}) {
+  const url = new URL(path, window.location.origin);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) url.searchParams.set(key, value);
+  }
+  if (path.startsWith("/api/") && selectedHarnessId && path !== "/api/harnesses" && path !== "/api/version") {
+    url.searchParams.set("harness", selectedHarnessId);
+  }
+  return `${url.pathname}${url.search}`;
+}
+
+async function switchHarness(harnessId) {
+  selectedHarnessId = harnessId;
+  localStorage.setItem("cco-selected-harness", harnessId);
+  const loading = document.getElementById("loading");
+  if (loading) {
+    loading.textContent = "Scanning selected harness...";
+    loading.classList.remove("hidden");
+  }
+
+  data = await fetchJson(apiUrl("/api/scan"));
+  selectedHarnessId = data?.harness?.id || harnessId;
+  localStorage.setItem("cco-selected-harness", selectedHarnessId);
+  selectedScopeId = getInitialSelectedScopeId();
+  selectedItem = null;
+  detailPreviewKey = null;
+  activeFilters.clear();
+  bulkSelected.clear();
+  showEffective = false;
+  effectiveShadowedKeys = new Set();
+  effectiveConflictKeys = new Set();
+  effectiveAncestorKeys = new Set();
+  mcpDisabledNames = new Set();
+  mcpDisabledScopeId = null;
+  securityScanResults = null;
+  securityBadges = {};
+  securityBaselineStatus = {};
+
+  closeDetail();
+  closeContextBudget();
+  closeMcpControlsPanel();
+  document.getElementById("securityPanel")?.classList.add("hidden");
+  document.getElementById("inheritToggleBtn")?.classList.remove("active");
+
+  initializeScopeState();
+  updateHarnessSelector();
+  updateCapabilityVisibility();
+  if (hasCapability("mcpSecurity")) {
+    await loadCachedSecurityResults();
+    await checkForNewMcpServers();
+  }
+  renderAll();
 }
 
 function setupScopeNotice() {
@@ -242,6 +327,7 @@ function setupScopeNotice() {
 }
 
 function setupUi() {
+  setupHarnessSelector();
   setupSearch();
   setupSidebarTree();
   setupFilterBar();
@@ -261,6 +347,66 @@ function setupUi() {
   setupMcpControls();
 }
 
+function setupHarnessSelector() {
+  const sidebar = document.getElementById("sidebar");
+  if (!sidebar || document.getElementById("harnessSelectorWrap")) return;
+
+  const wrap = document.createElement("label");
+  wrap.className = "harness-selector-wrap";
+  wrap.id = "harnessSelectorWrap";
+  wrap.innerHTML = `
+    <span class="harness-selector-label">Harness</span>
+    <select class="harness-selector" id="harnessSelector"></select>`;
+
+  const securityBtn = document.getElementById("securityScanBtn");
+  sidebar.insertBefore(wrap, securityBtn || document.getElementById("searchInput"));
+  updateHarnessSelector();
+
+  document.getElementById("harnessSelector").addEventListener("change", async (event) => {
+    try {
+      await switchHarness(event.target.value);
+    } catch (error) {
+      toast(error?.message || "Failed to switch harness", true);
+    }
+  });
+}
+
+function updateHarnessSelector() {
+  const select = document.getElementById("harnessSelector");
+  if (!select) return;
+  const scanHarness = data?.harness ? [data.harness] : [];
+  const harnesses = availableHarnesses.length ? availableHarnesses : scanHarness;
+  select.innerHTML = harnesses.map((harness) => `
+    <option value="${esc(harness.id)}"${harness.id === selectedHarnessId ? " selected" : ""}>
+      ${esc(`${harness.icon || ""} ${harness.displayName || harness.shortName || harness.id}`.trim())}
+    </option>`).join("");
+  select.disabled = harnesses.length <= 1;
+}
+
+function updateCapabilityVisibility() {
+  const ctxBtn = document.getElementById("ctxBudgetBtn");
+  const mcpBtn = document.getElementById("mcpControlsBtn");
+  const effectiveBtn = document.getElementById("inheritToggleBtn");
+  const securityBtn = document.getElementById("securityScanBtn");
+  const exportBtn = document.getElementById("exportBtn");
+
+  ctxBtn?.classList.toggle("hidden", !hasCapability("contextBudget"));
+  mcpBtn?.classList.toggle("hidden", !hasCapability("mcpControls"));
+  effectiveBtn?.classList.toggle("hidden", !hasCapability("effective"));
+  securityBtn?.classList.toggle("hidden", !hasCapability("mcpSecurity"));
+  exportBtn?.classList.toggle("hidden", !hasCapability("backup"));
+
+  if (!hasCapability("contextBudget")) closeContextBudget();
+  if (!hasCapability("mcpControls")) closeMcpControlsPanel();
+  if (!hasCapability("effective")) {
+    showEffective = false;
+    effectiveShadowedKeys = new Set();
+    effectiveConflictKeys = new Set();
+    effectiveAncestorKeys = new Set();
+    effectiveBtn?.classList.remove("active");
+  }
+}
+
 function setupSearch() {
   const input = document.getElementById("searchInput");
   input.addEventListener("input", () => {
@@ -275,9 +421,9 @@ function setupSidebarTree() {
     if (catRow) {
       selectedScopeId = catRow.dataset.scopeId;
       expandScopePath(selectedScopeId);
-      if (isContextBudgetOpen()) {
+      if (hasCapability("contextBudget") && isContextBudgetOpen()) {
         openContextBudget(selectedScopeId);
-      } else if (!document.getElementById("mcpControlsPanel").classList.contains("hidden")) {
+      } else if (hasCapability("mcpControls") && !document.getElementById("mcpControlsPanel").classList.contains("hidden")) {
         openMcpControlsPanel();
       }
       const cat = catRow.dataset.cat;
@@ -307,9 +453,9 @@ function setupSidebarTree() {
     showEffective = false; effectiveShadowedKeys = new Set(); effectiveConflictKeys = new Set(); effectiveAncestorKeys = new Set();
     document.getElementById("inheritToggleBtn")?.classList.remove("active");
     expandScopePath(selectedScopeId);
-    if (isContextBudgetOpen()) {
+    if (hasCapability("contextBudget") && isContextBudgetOpen()) {
       openContextBudget(selectedScopeId);
-    } else if (!document.getElementById("mcpControlsPanel").classList.contains("hidden")) {
+    } else if (hasCapability("mcpControls") && !document.getElementById("mcpControlsPanel").classList.contains("hidden")) {
       openMcpControlsPanel();
     } else if (selectedItem && selectedItem.scopeId !== selectedScopeId) {
       closeDetail();
@@ -353,6 +499,7 @@ function setupItemList() {
     if (actionBtn) {
       // MCP toggle doesn't need the item object — handle first
       if (actionBtn.dataset.action === "mcp-toggle") {
+        if (!hasCapability("mcpControls")) return;
         const mcpName = actionBtn.dataset.mcpName;
         const scope = getScopeById(selectedScopeId);
         if (!scope?.repoDir) return;
@@ -389,7 +536,7 @@ function setupItemList() {
         actionBtn.disabled = true;
         actionBtn.textContent = "...";
         try {
-          const resp = await fetch(`/api/session-distill?path=${encodeURIComponent(item.path)}`, { method: "POST" });
+          const resp = await fetch(apiUrl("/api/session-distill", { path: item.path }), { method: "POST" });
           const data = await resp.json();
           if (data.ok) {
             toast(`Distilled: ${data.stats.reduction} reduction, ${data.stats.indexEntries || 0} indexed refs`);
@@ -555,7 +702,7 @@ async function showCostBreakdown(item) {
   modelsEl.innerHTML = "";
 
   try {
-    const res = await fetch(`/api/session-cost?path=${encodeURIComponent(item.path)}`);
+    const res = await fetch(apiUrl("/api/session-cost", { path: item.path }));
     const data = await res.json();
     if (!data.ok) { totalEl.textContent = "Error loading cost"; return; }
 
@@ -754,6 +901,8 @@ function setupResizer(resizerId, panelId, direction) {
 
 function renderAll() {
   normalizeState();
+  updateCapabilityVisibility();
+  updateHarnessSelector();
   renderSidebar();
   renderContentHeader();
   renderPills();
@@ -850,7 +999,7 @@ function renderSidebarScope(scope, overrideChildHtml) {
 
   const categoryRows = getSidebarCategoryCounts(scope.id)
     .map(({ category, count }) => {
-      const config = CATEGORIES[category] || { icon: "📄", label: capitalize(category) };
+      const config = getCategoryConfig(category);
       return `
         <div class="s-cat" data-scope-id="${esc(scope.id)}" data-cat="${esc(category)}">
           <span class="s-cat-ico">${config.icon}</span>
@@ -866,7 +1015,7 @@ function renderSidebarScope(scope, overrideChildHtml) {
   const isExpanded = hasNestedContent && (searchQuery ? true : uiState.expandedScopes.has(scope.id));
   // In drag/collapse mode: always show children (scope names), hide categories
   const showBody = isDragMode ? hasChildren : (isExpanded && hasNestedContent);
-  const icon = SCOPE_ICONS[scope.type] || "📂";
+  const icon = getScopeIcon(scope.type);
 
   return `
     <div class="s-scope scope-block" data-scope-id="${esc(scope.id)}">
@@ -932,8 +1081,8 @@ function renderPills() {
   const NO_RULE_TIP = "No official scope rule — shown as inventory only";
   const pills = [
     { key: "all", label: "All", icon: "◌", count: scopeTotal, tip: null },
-    ...CATEGORY_ORDER.map((category) => {
-      const config = CATEGORIES[category] || { icon: "📄", filterLabel: capitalize(category) };
+    ...getCategoryOrder().map((category) => {
+      const config = getCategoryConfig(category);
       const hasRule = Boolean(getEffectiveRule(category));
       return {
         key: category,
@@ -988,7 +1137,7 @@ function renderRuleBar() {
   const content = document.getElementById("ruleBarContent");
   if (!bar || !toggle || !content) return;
 
-  if (!showEffective || !selectedScopeId || selectedScopeId === "global") {
+  if (!hasCapability("effective") || !showEffective || !selectedScopeId || selectedScopeId === "global") {
     bar.classList.add("hidden");
     return;
   }
@@ -996,8 +1145,8 @@ function renderRuleBar() {
   bar.classList.remove("hidden");
 
   // Build rule rows for all categories
-  const rows = CATEGORY_ORDER.map(cat => {
-    const config = CATEGORIES[cat];
+  const rows = getCategoryOrder().map(cat => {
+    const config = getCategoryConfig(cat);
     if (!config) return "";
     const rule = getEffectiveRule(cat);
     const noRule = !rule;
@@ -1018,6 +1167,7 @@ function renderRuleBar() {
 }
 
 async function loadMcpDisabledList(force = false) {
+  if (!hasCapability("mcpControls")) { mcpDisabledNames = new Set(); return; }
   if (!force && mcpDisabledScopeId === selectedScopeId) return; // already loaded for this scope
   mcpDisabledScopeId = selectedScopeId;
   const scope = getScopeById(selectedScopeId);
@@ -1038,7 +1188,7 @@ function renderMainContent() {
   }
 
   const items = getVisibleItemsForScope(scope.id);
-  const categories = CATEGORY_ORDER
+  const categories = getCategoryOrder()
     .map((category) => ({
       category,
       items: sortCategoryItems(category, items.filter((item) => item.category === category)),
@@ -1056,7 +1206,7 @@ function renderMainContent() {
   }
 
   itemList.innerHTML = categories.map(({ category, items: catItems }) => {
-    const config = CATEGORIES[category] || { icon: "📄", label: capitalize(category), group: null };
+    const config = getCategoryConfig(category);
     const catKey = `${scope.id}::${category}`;
     const collapsed = searchQuery ? false : uiState.collapsedCats.has(catKey);
 
@@ -1067,7 +1217,7 @@ function renderMainContent() {
           <span class="cat-hdr-ico">${config.icon}</span>
           <span class="cat-hdr-nm">${esc(config.label)}</span>
           <span class="cat-hdr-cnt">${pluralize(catItems.length, "item")}</span>
-          ${category === "session" ? `<button type="button" class="new-session-btn" data-scope-id="${esc(scope.id)}" title="Copy command to start a new session">＋ New</button>` : ""}
+          ${category === "session" && hasCapability("sessions") ? `<button type="button" class="new-session-btn" data-scope-id="${esc(scope.id)}" title="Copy command to start a new session">＋ New</button>` : ""}
           ${category === "mcp" ? "" : `<span class="cat-hdr-sort">
             <button type="button" class="sort-btn${(uiState.sortBy[`${scope.id}::${category}`]?.field === "size") ? " active" : ""}" data-cat="${esc(category)}" data-sort="size">Size ${sortArrow(`${scope.id}::${category}`, "size")}</button>
             <button type="button" class="sort-btn${(uiState.sortBy[`${scope.id}::${category}`]?.field === "date") ? " active" : ""}" data-cat="${esc(category)}" data-sort="date">Date ${sortArrow(`${scope.id}::${category}`, "date")}</button>
@@ -1147,7 +1297,7 @@ function renderSettingValuePreview(item) {
 }
 
 function renderItem(item) {
-  const icon = ITEM_ICONS[item.category] || "📄";
+  const icon = getCategoryConfig(item.category).icon || "📄";
   const key = itemKey(item);
   const isSelected = selectedItem && itemKey(selectedItem) === key;
   const checked = bulkSelected.has(key) ? " checked" : "";
@@ -1170,11 +1320,11 @@ function renderItem(item) {
                        : isFromGlobal   ? `<span class="scope-tag st-global" data-tooltip="Available globally from ~/.claude/ — applies to all projects on this machine">Global</span>`
                        : "";
   const isMcpDisabled = item.category === "mcp" && mcpDisabledNames.has(item.name);
-  const mcpToggleBtn = item.category === "mcp"
+  const mcpToggleBtn = item.category === "mcp" && hasCapability("mcpControls")
     ? `<button type="button" class="act-btn ${isMcpDisabled ? "act-mcp-enable" : "act-mcp-disable"}" data-action="mcp-toggle" data-mcp-name="${esc(item.name)}" title="${isMcpDisabled ? "Re-enable in this project" : "Disable in this project"}">${isMcpDisabled ? "Enable" : "Disable"}</button>`
     : "";
   // Session rows get Resume + Distill instead of Move/Open/Del
-  const sessionActions = item.subType === "session" ? `
+  const sessionActions = item.subType === "session" && hasCapability("sessions") ? `
     <span class="item-actions">
       <button type="button" class="act-btn act-resume" data-action="resume" title="Copy resume command">Resume</button>
       <button type="button" class="act-btn act-distill" data-action="distill" title="Distill session (backup + clean)">Distill</button>
@@ -1191,13 +1341,13 @@ function renderItem(item) {
   const dragHandle = item.locked ? "" : `<span class="drag-handle" title="Drag to move">⠿</span>`;
 
   // Security badge for MCP items
-  const secSev = item.category === "mcp" ? getSecuritySeverity(item.name) : null;
+  const secSev = item.category === "mcp" && hasCapability("mcpSecurity") ? getSecuritySeverity(item.name) : null;
   const secLabel = secSev === "critical" ? "CRITICAL" : secSev === "high" ? "HIGH" : secSev === "medium" ? "MED" : secSev === "low" ? "LOW" : secSev === "unreachable" ? "UNREACHABLE" : "";
   const secBadgeHtml = secSev
     ? `<span class="sec-badge sec-${secSev} item-sec-flag">${secLabel}</span>`
     : "";
   // Baseline status flag (NEW / CHANGED) for MCP items
-  const blStatus = item.category === "mcp" ? (securityBaselineStatus[item.name] || null) : null;
+  const blStatus = item.category === "mcp" && hasCapability("mcpSecurity") ? (securityBaselineStatus[item.name] || null) : null;
   const blFlagHtml = blStatus === "new"
     ? `<span class="sec-badge sec-new item-sec-flag">NEW</span>`
     : blStatus === "changed"
@@ -1665,18 +1815,13 @@ function timeAgo(isoString) {
   return `${Math.round(diff / 86400)} d ago`;
 }
 
-const PILL_CATEGORIES = [
-  "session", "memory", "skill", "mcp", "setting", "rule",
-  "plan", "config", "agent", "hook", "command", "plugin",
-];
-
 function renderBackupPills(counts) {
   const container = document.getElementById("bkpPills");
   if (!counts || Object.keys(counts).length === 0) {
     container.innerHTML = `<span class="bkp-pill-loading">No data</span>`;
     return;
   }
-  container.innerHTML = PILL_CATEGORIES
+  container.innerHTML = getCategoryOrder()
     .filter(cat => (counts[cat] || 0) > 0)
     .map(cat => `
       <span class="bkp-pill bkp-pill-${cat}">
@@ -1949,6 +2094,7 @@ function setupBackupModal() {
 
 function setupContextBudget() {
   document.getElementById("ctxBudgetBtn").addEventListener("click", () => {
+    if (!hasCapability("contextBudget")) return;
     if (!selectedScopeId) {
       toast("Select a scope first", true);
       return;
@@ -1959,6 +2105,7 @@ function setupContextBudget() {
   document.getElementById("ctxBudgetClose").addEventListener("click", closeContextBudget);
 
   document.getElementById("inheritToggleBtn")?.addEventListener("click", () => {
+    if (!hasCapability("effective")) return;
     const scope = getScopeById(selectedScopeId);
     if (!scope || scope.id === "global") return;
     showEffective = !showEffective;
@@ -1969,6 +2116,7 @@ function setupContextBudget() {
 }
 
 function openContextBudget(scopeId) {
+  if (!hasCapability("contextBudget")) return;
   // Hide item detail panel, show context budget panel
   document.getElementById("detailPanel").classList.add("hidden");
   const panel = document.getElementById("ctxBudgetPanel");
@@ -2235,10 +2383,10 @@ function renderByCategory(allItems) {
     byCategory[cat].push(item);
   }
 
-  for (const cat of CATEGORY_ORDER) {
+  for (const cat of getCategoryOrder()) {
     const catItems = byCategory[cat];
     if (!catItems) continue;
-    const catInfo = CATEGORIES[cat] || { icon: "📄", label: cat };
+    const catInfo = getCategoryConfig(cat);
     const catTotal = catItems.reduce((sum, i) => sum + i.tokens, 0);
 
     html += `<div class="ctx-section">
@@ -2269,7 +2417,7 @@ function renderByTokens(allItems) {
     </div>
     <div class="ctx-section-items">
       ${sorted.map(item => {
-        const catInfo = CATEGORIES[item.category] || { icon: "📄" };
+        const catInfo = getCategoryConfig(item.category);
         return renderBudgetItem(item, catInfo.icon, true);
       }).join("")}
     </div>
@@ -2286,10 +2434,10 @@ function renderItemsByCategory(items, showSource) {
   }
 
   let html = "";
-  for (const cat of CATEGORY_ORDER) {
+  for (const cat of getCategoryOrder()) {
     const catItems = byCategory[cat];
     if (!catItems) continue;
-    const catInfo = CATEGORIES[cat] || { icon: "📄", label: cat };
+    const catInfo = getCategoryConfig(cat);
     const catTotal = catItems.reduce((sum, i) => sum + i.tokens, 0);
 
     html += `<div class="ctx-cat-group">
@@ -2329,7 +2477,7 @@ function renderBreadcrumb(scope) {
   if (!scope) return `<span class="crumb-pill">Unknown scope</span>`;
   const scopes = [...getScopeChain(scope), scope];
   return scopes.map((entry, index) => {
-    const icon = SCOPE_ICONS[entry.type] || "📂";
+    const icon = getScopeIcon(entry.type);
     const sep = index === scopes.length - 1 ? "" : `<span class="crumb-sep">›</span>`;
     return `<span class="crumb-pill">${icon} ${esc(entry.name)}</span>${sep}`;
   }).join("");
@@ -2597,12 +2745,12 @@ function closeDetail() {
 }
 
 function showDragConfirm(item, fromScope, toScope) {
-  const fromIcon = SCOPE_ICONS[fromScope?.type] || "📂";
-  const toIcon = SCOPE_ICONS[toScope?.type] || "📂";
+  const fromIcon = getScopeIcon(fromScope?.type);
+  const toIcon = getScopeIcon(toScope?.type);
 
   document.getElementById("dcPreview").innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-      <span style="font-size:1.1rem;">${ITEM_ICONS[item.category] || "📄"}</span>
+      <span style="font-size:1.1rem;">${getCategoryConfig(item.category).icon || "📄"}</span>
       <div>
         <div style="font-weight:900;color:var(--text-primary);font-size:0.9rem;">${esc(item.name)}</div>
         <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">
@@ -2641,7 +2789,7 @@ function openDeleteModal(item) {
 
   document.getElementById("deletePreview").innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-      <span style="font-size:1.1rem;">${ITEM_ICONS[item.category] || "📄"}</span>
+      <span style="font-size:1.1rem;">${getCategoryConfig(item.category).icon || "📄"}</span>
       <div>
         <div style="font-weight:900;color:var(--text-primary);font-size:0.9rem;">${esc(item.name)}</div>
         <div style="font-size:0.68rem;color:var(--text-muted);margin-top:2px;">${esc(scope?.name || item.scopeId)} · ${esc(item.category)}</div>
@@ -2862,7 +3010,7 @@ function buildOrderedScopeEntries(destinations, currentScopeId) {
 
 function renderDestinationRow(scope) {
   const indent = scope.depth > 0 ? ` style="padding-left:${scope.depth * 28}px"` : "";
-  const icon = scope.id === "global" ? "🌐" : (SCOPE_ICONS[scope.type] || "📂");
+  const icon = scope.id === "global" ? (getScopeTypeConfig(scope.type)?.icon || "🌐") : getScopeIcon(scope.type);
   const currentLabel = scope.isCurrent
     ? ' <span style="font-size:0.6rem;color:var(--text-faint);margin-left:4px;">(current)</span>'
     : "";
@@ -2910,7 +3058,7 @@ async function doMove(itemRef, toScopeId, skipRefresh = false) {
   if (!item) return { ok: false, error: "Item not found" };
 
   const fromScopeId = item.scopeId;
-  const response = await fetch("/api/move", {
+  const response = await fetch(apiUrl("/api/move"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -2933,7 +3081,7 @@ async function doMove(itemRef, toScopeId, skipRefresh = false) {
     }
 
     const undoFn = async () => {
-      const undoResult = await fetch("/api/move", {
+      const undoResult = await fetch(apiUrl("/api/move"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2986,7 +3134,7 @@ async function doDelete(itemRef, skipRefresh = false) {
     // best effort backup only
   }
 
-  const response = await fetch("/api/delete", {
+  const response = await fetch(apiUrl("/api/delete"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -3008,7 +3156,7 @@ async function doDelete(itemRef, skipRefresh = false) {
     let undoFn = null;
     if (mcpBackup) {
       undoFn = async () => {
-        const restoreResult = await fetch("/api/restore-mcp", {
+        const restoreResult = await fetch(apiUrl("/api/restore-mcp"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(mcpBackup),
@@ -3023,7 +3171,7 @@ async function doDelete(itemRef, skipRefresh = false) {
       };
     } else if (backupContent) {
       undoFn = async () => {
-        const restoreResult = await fetch("/api/restore", {
+        const restoreResult = await fetch(apiUrl("/api/restore"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -3186,14 +3334,14 @@ function getRecursiveScopeCount(scopeId) {
 
 function getSidebarCategoryCounts(scopeId) {
   const counts = new Map();
-  for (const category of CATEGORY_ORDER) counts.set(category, 0);
+  for (const category of getCategoryOrder()) counts.set(category, 0);
 
   for (const item of getItemsForScope(scopeId)) {
     if (searchQuery && !itemMatchesSearch(item)) continue;
     counts.set(item.category, (counts.get(item.category) || 0) + 1);
   }
 
-  return CATEGORY_ORDER
+  return getCategoryOrder()
     .map((category) => ({ category, count: counts.get(category) || 0 }))
     .filter((entry) => entry.count > 0);
 }
@@ -3240,7 +3388,7 @@ function findVisibleScopeInTree(scope) {
  * then stores results in app-level state (effectiveShadowedKeys etc).
  */
 function computeEffectiveSets(scopeId) {
-  if (!showEffective || !scopeId || scopeId === "global") {
+  if (!hasCapability("effective") || !showEffective || !scopeId || scopeId === "global") {
     effectiveShadowedKeys = new Set();
     effectiveConflictKeys = new Set();
     effectiveAncestorKeys = new Set();
@@ -3254,7 +3402,7 @@ function computeEffectiveSets(scopeId) {
 
 function getVisibleItemsForScope(scopeId) {
   const ownItems = getItemsForScope(scopeId).filter((item) => itemVisibleInMain(item));
-  if (!showEffective || scopeId === "global") return ownItems;
+  if (!hasCapability("effective") || !showEffective || scopeId === "global") return ownItems;
 
   // Use shared module for effective resolution, then apply UI filters
   const allEffective = getEffectiveItems(scopeId, data?.items || [], data?.scopes || []);
@@ -3289,16 +3437,17 @@ function itemMatchesSearch(item) {
 function sortCategoryItems(category, items) {
   const catKey = `${selectedScopeId}::${category}`;
   const sortState = uiState.sortBy[catKey];
+  const sortDefault = getCategoryConfig(category).sortDefault;
 
   let sorted = [...items];
 
   // Default sort for sessions: newest first
-  if (!sortState && category === "session") {
+  if (!sortState && sortDefault === "date") {
     return sorted.sort((a, b) => (b.mtime || "").localeCompare(a.mtime || ""));
   }
 
   // Default sort for memory: by subType then name
-  if (!sortState && category === "memory") {
+  if (!sortState && sortDefault === "subType") {
     const order = { project: 0, reference: 1, user: 2, feedback: 3 };
     return sorted.sort((a, b) => {
       const aOrder = order[a.subType] ?? 99;
@@ -3326,11 +3475,15 @@ function sortArrow(catKey, field) {
 }
 
 function canMoveItem(item) {
-  return !item.locked && ["memory", "skill", "mcp", "plan", "command", "agent", "rule"].includes(item.category);
+  if (item.locked) return false;
+  const config = getCategoryConfig(item.category);
+  return config.movable === true;
 }
 
 function canDeleteItem(item) {
-  return !item.locked;
+  if (item.locked) return false;
+  const config = getCategoryConfig(item.category);
+  return config.deletable !== false;
 }
 
 function itemKey(item) {
@@ -3491,6 +3644,7 @@ function showMcpDisableConfirm(scope, mcpName) {
 }
 
 async function openMcpControlsPanel() {
+  if (!hasCapability("mcpControls")) return;
   const panel = document.getElementById("mcpControlsPanel");
   panel.classList.remove("hidden");
 
@@ -3593,6 +3747,7 @@ function setupMcpControls() {
   const btn = document.getElementById("mcpControlsBtn");
   if (!btn) return;
   btn.addEventListener("click", () => {
+    if (!hasCapability("mcpControls")) return;
     document.getElementById("ctxBudgetPanel")?.classList.add("hidden");
     document.getElementById("securityPanel")?.classList.add("hidden");
     closeDetail();
@@ -3629,6 +3784,7 @@ function setupSecurityScan() {
   // Cached results + new server check loaded in init() before renderAll
 
   btn.addEventListener("click", async () => {
+    if (!hasCapability("mcpSecurity")) return;
     document.getElementById("ctxBudgetPanel")?.classList.add("hidden");
     panel.classList.remove("hidden");
 
@@ -3753,7 +3909,7 @@ async function runSecurityScan() {
     progressBar.style.width = "20%";
     progressText.textContent = "Fetching tool definitions from MCP servers...";
 
-    const resp = await fetch("/api/security-scan", { method: "POST" });
+    const resp = await fetch(apiUrl("/api/security-scan"), { method: "POST" });
     const scanData = await resp.json();
 
     progressBar.style.width = "90%";
@@ -4012,7 +4168,7 @@ function getPersistableSecurityScanData(scanData) {
 
 /** Save security scan results to server for persistence across sessions. */
 function saveSecurityResults(scanData) {
-  fetch("/api/security-cache", {
+  fetch(apiUrl("/api/security-cache"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(getPersistableSecurityScanData(scanData)),
@@ -4022,7 +4178,7 @@ function saveSecurityResults(scanData) {
 /** Load cached security scan results from server on startup. */
 async function loadCachedSecurityResults() {
   try {
-    const resp = await fetch("/api/security-cache");
+    const resp = await fetch(apiUrl("/api/security-cache"));
     const cached = await resp.json();
     if (!cached.ok || !cached.data) return;
 
@@ -4073,7 +4229,7 @@ async function loadCachedSecurityResults() {
 /** Check for new MCP servers on startup (no scan needed, just compare names against baselines). */
 async function checkForNewMcpServers() {
   try {
-    const resp = await fetch("/api/security-baseline-check");
+    const resp = await fetch(apiUrl("/api/security-baseline-check"));
     const result = await resp.json();
     if (!result.ok) return;
 

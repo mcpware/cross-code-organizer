@@ -1472,10 +1472,8 @@ export async function detectEnterpriseMcp() {
 export async function scan(options = {}) {
   const result = await scanHarness(claudeAdapter, options);
   return {
-    scopes: result.scopes,
-    items: result.items,
-    counts: result.counts,
-    enterpriseMcp: result.adapterData.enterpriseMcp,
+    ...result,
+    ...result.adapterData,
   };
 }
 

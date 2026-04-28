@@ -51,9 +51,7 @@ export async function scanHarness(harnessIdOrOptions = getDefaultAdapterId(), ma
 export async function scan(options = {}) {
   const result = await scanHarness(getDefaultAdapterId(), options);
   return {
-    scopes: result.scopes,
-    items: result.items,
-    counts: result.counts,
-    enterpriseMcp: result.adapterData.enterpriseMcp,
+    ...result,
+    ...result.adapterData,
   };
 }
