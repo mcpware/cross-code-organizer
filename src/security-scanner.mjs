@@ -20,6 +20,11 @@ const HOME = homedir();
 const BASELINE_DIR = join(HOME, ".claude", ".cco-security");
 const BASELINE_PATH = join(BASELINE_DIR, "baselines.json");
 
+function baselinePaths(options = {}) {
+  const dir = options.baselineDir || BASELINE_DIR;
+  return { dir, path: join(dir, "baselines.json") };
+}
+
 // ══════════════════════════════════════════════════════════════════════
 // LAYER 1: DEOBFUSCATION (8 techniques from AgentSeal deobfuscate.py)
 // ══════════════════════════════════════════════════════════════════════
@@ -558,9 +563,10 @@ function scanCrossServerRefs(tools, allServerNames) {
 /**
  * Load saved baselines from disk.
  */
-async function loadBaselines() {
+async function loadBaselines(options = {}) {
+  const { path } = baselinePaths(options);
   try {
-    const content = await readFile(BASELINE_PATH, "utf-8");
+    const content = await readFile(path, "utf-8");
     return JSON.parse(content);
   } catch {
     return {};
@@ -570,9 +576,10 @@ async function loadBaselines() {
 /**
  * Save baselines to disk.
  */
-async function saveBaselines(baselines) {
-  await mkdir(BASELINE_DIR, { recursive: true });
-  await writeFile(BASELINE_PATH, JSON.stringify(baselines, null, 2));
+async function saveBaselines(baselines, options = {}) {
+  const { dir, path } = baselinePaths(options);
+  await mkdir(dir, { recursive: true });
+  await writeFile(path, JSON.stringify(baselines, null, 2));
 }
 
 /**
@@ -630,8 +637,8 @@ function compareBaselines(currentServers, savedBaselines) {
 /**
  * Update baselines with current scan data.
  */
-async function updateBaselines(currentServers) {
-  const baselines = await loadBaselines();
+async function updateBaselines(currentServers, options = {}) {
+  const baselines = await loadBaselines(options);
   const now = new Date().toISOString();
 
   for (const server of currentServers) {
@@ -652,7 +659,7 @@ async function updateBaselines(currentServers) {
     }
   }
 
-  await saveBaselines(baselines);
+  await saveBaselines(baselines, options);
   return baselines;
 }
 
@@ -779,7 +786,7 @@ Respond with ONLY the JSON array, no other text.`;
  * @param {object} scanData - Full scan data from scanner.mjs (for hooks, rules, etc.)
  * @returns {object} - Complete scan results
  */
-export async function runSecurityScan(introspectionResults, scanData) {
+export async function runSecurityScan(introspectionResults, scanData, options = {}) {
   const allFindings = [];
   const serverSummaries = [];
 
@@ -847,11 +854,11 @@ export async function runSecurityScan(introspectionResults, scanData) {
   // TODO: re-enable with allowlist + minimum name length filter.
 
   // ── Phase 3: Baseline comparison ──
-  const savedBaselines = await loadBaselines();
+  const savedBaselines = await loadBaselines(options);
   const baselineComparison = compareBaselines(introspectionResults, savedBaselines);
 
   // Save new baselines
-  await updateBaselines(introspectionResults);
+  await updateBaselines(introspectionResults, options);
 
   // ── Aggregate results ──
   const severityCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };

@@ -119,6 +119,7 @@ async function getHarnessPathInfo(harnessId = getDefaultAdapterId()) {
     rootDir,
     backupDir,
     backupConfig: join(backupDir, "config.json"),
+    securityDir: join(rootDir, ".cco-security"),
   };
 }
 
@@ -1041,6 +1042,7 @@ async function handleRequest(req, res) {
   if (path === "/api/security-scan" && req.method === "POST") {
     try {
       if (!cachedData) await freshScan();
+      const { securityDir } = await getHarnessPathInfo(harnessId);
 
       // Get all MCP server items from scan data
       const mcpItems = cachedData.items.filter(i => i.category === "mcp" && i.mcpConfig);
@@ -1049,7 +1051,7 @@ async function handleRequest(req, res) {
       const introspectionResults = await introspectServers(mcpItems);
 
       // Phase 2 + 3: Pattern scan + baseline comparison
-      const scanResults = await runSecurityScan(introspectionResults, cachedData);
+      const scanResults = await runSecurityScan(introspectionResults, cachedData, { baselineDir: securityDir });
 
       // Phase 4: Detect duplicate MCP servers (ccsrc signature-based dedup)
       scanResults.duplicates = detectMcpDuplicates(mcpItems);
@@ -1090,9 +1092,10 @@ async function handleRequest(req, res) {
   if (path === "/api/security-baseline-check" && req.method === "GET") {
     try {
       if (!cachedData) await freshScan();
+      const { securityDir } = await getHarnessPathInfo(harnessId);
       const mcpNames = new Set(cachedData.items.filter(i => i.category === "mcp" && i.mcpConfig).map(i => i.name));
       const { loadBaselines } = await import("./security-scanner.mjs");
-      const baselines = await loadBaselines();
+      const baselines = await loadBaselines({ baselineDir: securityDir });
       const baselineNames = new Set(Object.keys(baselines));
 
       const newServers = [...mcpNames].filter(n => !baselineNames.has(n));
@@ -1106,7 +1109,8 @@ async function handleRequest(req, res) {
   // GET /api/security-cache — load cached scan results
   if (path === "/api/security-cache" && req.method === "GET") {
     try {
-      const cachePath = join(CLAUDE_DIR, ".cco-security", "last-scan.json");
+      const { securityDir } = await getHarnessPathInfo(harnessId);
+      const cachePath = join(securityDir, "last-scan.json");
       const content = await readFile(cachePath, "utf-8");
       return json(res, { ok: true, data: JSON.parse(content) });
     } catch {
@@ -1119,9 +1123,9 @@ async function handleRequest(req, res) {
     try {
       const body = await readBody(req);
       const { mkdir: mk, writeFile: wf } = await import("node:fs/promises");
-      const cacheDir = join(CLAUDE_DIR, ".cco-security");
-      await mk(cacheDir, { recursive: true });
-      await wf(join(cacheDir, "last-scan.json"), JSON.stringify(body));
+      const { securityDir } = await getHarnessPathInfo(harnessId);
+      await mk(securityDir, { recursive: true });
+      await wf(join(securityDir, "last-scan.json"), JSON.stringify(body));
       return json(res, { ok: true });
     } catch (err) {
       return json(res, { ok: false, error: err.message }, 500);
