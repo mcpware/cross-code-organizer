@@ -50,6 +50,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@iarna/toml": "^2.2.5",
     "@modelcontextprotocol/sdk": "^1.27.1"
   },
   "devDependencies": {
