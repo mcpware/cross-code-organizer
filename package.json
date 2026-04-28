@@ -17,7 +17,7 @@
     "mcp": "node src/mcp-server.mjs",
     "test": "npx playwright test --config tests/e2e/playwright.config.mjs",
     "test:headed": "npx playwright test --config tests/e2e/playwright.config.mjs --headed",
-    "test:unit": "node --test tests/unit/"
+    "test:unit": "node --test tests/unit/*.mjs"
   },
   "keywords": [
     "claude-code",

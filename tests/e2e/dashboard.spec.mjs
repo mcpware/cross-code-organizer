@@ -16,7 +16,7 @@ import { test, expect } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import {
   mkdtemp, mkdir, writeFile, readFile, access,
-  rm, readdir, stat,
+  rm, readdir, stat, chmod,
 } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -69,6 +69,8 @@ async function createTestEnv() {
   const port = PORT_COUNTER++;
   const tmpDir = await mkdtemp(join(tmpdir(), 'cco-test-'));
   const claudeDir = join(tmpDir, '.claude');
+  const binDir = join(tmpDir, 'bin');
+  const claudeBin = join(binDir, 'claude');
 
   // ── Directory structure ──
   const dirs = {
@@ -92,6 +94,7 @@ async function createTestEnv() {
 
   // Create all directories (including real repo dirs for path resolution)
   await Promise.all([
+    mkdir(binDir, { recursive: true }),
     mkdir(dirs.globalMem, { recursive: true }),
     mkdir(dirs.globalSkills, { recursive: true }),
     mkdir(dirs.projectMem, { recursive: true }),
@@ -102,6 +105,9 @@ async function createTestEnv() {
     mkdir(nestedDir, { recursive: true }),
     mkdir(deepDir, { recursive: true }),
   ]);
+
+  await writeFile(claudeBin, '#!/bin/sh\necho CCO_AUTH_OK\n');
+  await chmod(claudeBin, 0o755);
 
   // ── Global memories (4 types) ──
   const globalMemories = {
@@ -274,7 +280,7 @@ async function createTestEnv() {
   let actualPort = port;
   const server = await new Promise((resolve, reject) => {
     const proc = spawn(NODE_BIN, [join(PROJECT_ROOT, 'bin', 'cli.mjs'), '--port', String(port), '--no-open'], {
-      env: { ...process.env, HOME: tmpDir },
+      env: { ...process.env, HOME: tmpDir, PATH: `${binDir}:${process.env.PATH}` },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -1092,6 +1098,34 @@ test.describe('UI Rendering', () => {
     await page.click('#detailClose');
   });
 
+  test('detail panel previews markdown-backed skills, memories, and agents even if markdown parser fails', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(window, 'marked', {
+        configurable: true,
+        value: { parse: () => { throw new Error('marked failed'); } },
+      });
+    });
+
+    await page.goto(env.baseURL);
+    await page.waitForSelector('#loading', { state: 'hidden' });
+    await page.locator('.s-scope-hdr[data-scope-id="global"] .s-nm').click();
+    await page.waitForTimeout(300);
+
+    const cases = [
+      { name: 'deploy', expected: 'Deploy the application to production.' },
+      { name: 'user_prefs', expected: 'TypeScript + ESM' },
+      { name: 'code-reviewer', expected: 'Review code carefully.' },
+    ];
+
+    for (const { name, expected } of cases) {
+      const row = page.locator('.item', { hasText: name }).first();
+      await expect(row).toBeVisible();
+      await row.click();
+      await expect(page.locator('#previewContent')).toContainText(expected);
+      await expect(page.locator('#previewContent')).not.toContainText('Failed to load preview');
+    }
+  });
+
   test('move modal shows full scope hierarchy with current scope marked', async ({ page }) => {
     await page.goto(env.baseURL);
     await page.waitForSelector('#loading', { state: 'hidden' });
@@ -1828,31 +1862,31 @@ test.describe('Security — malformed input', () => {
   test.beforeAll(async () => { env = await createTestEnv(); });
   test.afterAll(async () => { await env.cleanup(); });
 
-  test('POST /api/move with invalid JSON returns 500', async () => {
+  test('POST /api/move with invalid JSON returns 400', async () => {
     const res = await fetch(`${env.baseURL}/api/move`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: 'this is not json{{{',
     });
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(400);
   });
 
-  test('POST /api/delete with invalid JSON returns 500', async () => {
+  test('POST /api/delete with invalid JSON returns 400', async () => {
     const res = await fetch(`${env.baseURL}/api/delete`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: '{"broken',
     });
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(400);
   });
 
-  test('POST /api/restore with empty body returns 500', async () => {
+  test('POST /api/restore with empty body returns 400', async () => {
     const res = await fetch(`${env.baseURL}/api/restore`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: '',
     });
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(400);
   });
 
   test('POST /api/move with empty object returns 400', async () => {
@@ -2848,12 +2882,16 @@ test.describe('Security Scanner API', () => {
   });
 
   test('GET /api/security-status returns availability', async () => {
+    test.setTimeout(45000);
     const env = await createTestEnv();
-    const res = await fetch(`${env.baseURL}/api/security-status`);
-    const data = await res.json();
-    expect(data.ok).toBe(true);
-    expect(typeof data.available).toBe('boolean');
-    env.cleanup();
+    try {
+      const res = await fetch(`${env.baseURL}/api/security-status`);
+      const data = await res.json();
+      expect(data.ok).toBe(true);
+      expect(typeof data.available).toBe('boolean');
+    } finally {
+      await env.cleanup();
+    }
   });
 
   test('POST+GET /api/security-cache round-trip', async () => {

@@ -180,6 +180,115 @@ function resetSettingsCache() {
 // ── Path decoding ────────────────────────────────────────────────────
 
 /**
+ * Ground-truth resolver: read a session file inside the encoded project dir
+ * and pull the `cwd` field from an entry. Claude Code writes the real cwd into
+ * sessions, so this avoids guessing when path encoding is lossy.
+ */
+async function resolveViaSessionCwd(claudeProjectDir) {
+  let entries;
+  try {
+    entries = await readdir(claudeProjectDir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+
+  const sessionFiles = entries
+    .filter(e => e.isFile() && e.name.endsWith(".jsonl"))
+    .slice(0, 3);
+
+  for (const entry of sessionFiles) {
+    const lines = await readFirstLines(join(claudeProjectDir, entry.name), 20);
+    for (const line of lines) {
+      const cwd = parseJsonLine(line)?.cwd;
+      if (typeof cwd === "string" && cwd.length > 0 && await exists(cwd)) return cwd;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Character-level fallback for encoded paths containing Unicode characters.
+ * Claude Code preserves alphanumerics and hyphens, and encodes everything else
+ * as "-". Treat encoded "-" as a non-alphanumeric wildcard.
+ */
+async function resolveEncodedProjectPathUnicode(encoded) {
+  let pattern = encoded.replace(/^-/, "");
+  let rootPath = "/";
+
+  if (RUNTIME_PLATFORM === "win32" && /^[a-z]--/i.test(pattern)) {
+    rootPath = pattern[0].toUpperCase() + ":\\";
+    pattern = pattern.slice(3);
+  }
+
+  const alnum = /[A-Za-z0-9]/;
+
+  async function walk(currentPath, pos) {
+    if (pos >= pattern.length) {
+      return (await exists(currentPath)) ? currentPath : null;
+    }
+
+    let entries;
+    try {
+      entries = (await readdir(currentPath, { withFileTypes: true }))
+        .filter(e => e.isDirectory() || e.isSymbolicLink())
+        .map(e => e.name);
+    } catch {
+      return null;
+    }
+
+    const candidates = [];
+    for (const name of entries) {
+      if (pos + name.length > pattern.length) continue;
+
+      let ok = true;
+      for (let i = 0; i < name.length; i++) {
+        const pc = pattern[pos + i];
+        const nc = name[i];
+        if (pc === "-") {
+          if (alnum.test(nc)) {
+            ok = false;
+            break;
+          }
+        } else if (pc.toLowerCase() !== nc.toLowerCase()) {
+          ok = false;
+          break;
+        }
+      }
+      if (!ok) continue;
+
+      const nextPos = pos + name.length;
+      if (nextPos === pattern.length) {
+        candidates.push({ name, nextPos });
+      } else if (pattern[nextPos] === "-") {
+        candidates.push({ name, nextPos: nextPos + 1 });
+      }
+    }
+
+    candidates.sort((a, b) => b.name.length - a.name.length);
+    for (const candidate of candidates) {
+      const result = await walk(join(currentPath, candidate.name), candidate.nextPos);
+      if (result) return result;
+    }
+
+    return null;
+  }
+
+  return walk(rootPath, 0);
+}
+
+function prettifyEncodedPath(encoded) {
+  let cleaned = encoded.replace(/^-/, "");
+  if (/^[a-z]--/i.test(cleaned)) {
+    cleaned = cleaned[0].toUpperCase() + ":/" + cleaned.slice(3);
+  }
+  cleaned = cleaned.replace(/-{2,}/g, "/.../");
+  cleaned = cleaned.replace(/-/g, "/");
+  cleaned = cleaned.replace(/\/+/g, "/").replace(/^\/|\/$/g, "");
+  return cleaned || encoded;
+}
+
+/**
  * Resolve an encoded project dir name back to a real filesystem path.
  * E.g. "-home-user-mycompany-repo1" → "/home/user/mycompany/repo1"
  *
@@ -214,7 +323,7 @@ async function resolveEncodedProjectPath(encoded) {
     let entries;
     try {
       entries = await readdir(currentPath, { withFileTypes: true });
-      entries = entries.filter(e => e.isDirectory());
+      entries = entries.filter(e => e.isDirectory() || e.isSymbolicLink());
     } catch {
       return null;
     }
@@ -276,38 +385,48 @@ async function discoverScopes() {
   for (const d of projectDirs) {
     if (!d.isDirectory()) continue;
 
-    // Decode encoded path: try to find the real directory on disk.
-    // The encoding replaces / with - and prepends -.
-    // E.g. -home-user-mycompany-repo1 → /home/user/mycompany/repo1
-    // Since directory names can contain dashes, we resolve by checking which real path exists.
-    const realPath = await resolveEncodedProjectPath(d.name);
-    if (!realPath) continue;
-
-    const shortName = basename(realPath);
     const projectDir = join(projectsDir, d.name);
 
     // Discover any project directory that has content (not just memory).
     // Sessions, plans, or other items may exist without a memory/ subfolder.
     const entries = await readdir(projectDir);
     const hasContent = entries.some(e => e !== ".DS_Store");
+    if (!hasContent) continue;
 
-    if (hasContent) {
-      projectEntries.push({
-        encodedName: d.name,
-        realPath,
-        shortName,
-        claudeProjectDir: projectDir,
-      });
-    }
+    let realPath = await resolveViaSessionCwd(projectDir);
+    if (!realPath) realPath = await resolveEncodedProjectPath(d.name);
+    if (!realPath) realPath = await resolveEncodedProjectPathUnicode(d.name);
+
+    projectEntries.push({
+      encodedName: d.name,
+      realPath,
+      shortName: realPath ? basename(realPath) : prettifyEncodedPath(d.name),
+      claudeProjectDir: projectDir,
+    });
   }
 
-  // Sort by path depth (shorter = parent) then alphabetically
+  // Sort by path depth (shorter = parent) then alphabetically. Unresolved
+  // encoded scopes are kept last so their memory/session content stays visible.
   projectEntries.sort((a, b) => {
+    if (!a.realPath && !b.realPath) return a.shortName.localeCompare(b.shortName);
+    if (!a.realPath) return 1;
+    if (!b.realPath) return -1;
     const da = a.realPath.split("/").length;
     const db = b.realPath.split("/").length;
     if (da !== db) return da - db;
     return a.realPath.localeCompare(b.realPath);
   });
+
+  const nameCount = new Map();
+  for (const entry of projectEntries) {
+    nameCount.set(entry.shortName, (nameCount.get(entry.shortName) || 0) + 1);
+  }
+  for (const entry of projectEntries) {
+    if (entry.realPath && nameCount.get(entry.shortName) > 1) {
+      const parts = entry.realPath.split(/[\/\\]/).filter(Boolean);
+      if (parts.length >= 2) entry.shortName = `${parts.at(-2)}/${entry.shortName}`;
+    }
+  }
 
   // Claude Code has two scopes: User (global) and Project.
   // Every project's parent is always global — there is no intermediate workspace scope.
@@ -369,6 +488,10 @@ async function loadSkillBundles(repoDir) {
 
 // ── Item scanners ────────────────────────────────────────────────────
 
+function encodeClaudeProjectName(realPath) {
+  return realPath.replace(/[^A-Za-z0-9-]/g, "-");
+}
+
 async function scanMemories(scope) {
   const items = [];
   const settings = await getSettingsOverrides();
@@ -429,6 +552,64 @@ async function scanSkills(scope) {
   // Load bundle info from skills-lock.json
   const bundleMap = await loadSkillBundles(scope.repoDir);
 
+  async function readSkillEntry(skillsRoot, entryName, pluginName = null) {
+    const skillDir = join(skillsRoot, entryName);
+    const skillMd = join(skillDir, "SKILL.md");
+    if (!(await exists(skillMd))) return null;
+
+    const s = await safeStat(skillMd);
+    const content = await safeReadFile(skillMd);
+
+    // Extract description: first meaningful paragraph line after the heading
+    let description = "";
+    if (content) {
+      const lines = content.split("\n");
+      let pastHeading = false;
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith("# ")) { pastHeading = true; continue; }
+        if (!pastHeading) continue;
+        // Skip empty lines, frontmatter-like lines, code blocks, list items
+        if (!trimmed) continue;
+        if (trimmed.startsWith("```") || trimmed.startsWith("-") || trimmed.startsWith("|")) continue;
+        if (trimmed.match(/^\w+:\s/)) continue; // skip "name: foo" style lines
+        if (trimmed.startsWith("##")) continue;
+        description = trimmed.slice(0, 120);
+        break;
+      }
+    }
+
+    // Count files in skill directory
+    const allFiles = await readdir(skillDir, { withFileTypes: true });
+    const fileCount = allFiles.filter(f => f.isFile()).length;
+
+    // Total size of skill directory
+    let totalSize = 0;
+    for (const f of allFiles.filter(f => f.isFile())) {
+      const fs = await safeStat(join(skillDir, f.name));
+      if (fs) totalSize += fs.size;
+    }
+
+    // Bundle detection from skills-lock.json
+    const bundleInfo = bundleMap.get(entryName);
+
+    return {
+      category: "skill",
+      scopeId: scope.id,
+      name: entryName,
+      fileName: entryName, // directory name
+      description,
+      subType: pluginName ? "plugin-skill" : "skill",
+      size: formatSize(totalSize),
+      sizeBytes: totalSize,
+      fileCount,
+      mtime: s ? s.mtime.toISOString().slice(0, 16) : "",
+      ctime: s ? s.birthtime.toISOString().slice(0, 16) : "",
+      path: skillDir,
+      bundle: pluginName || bundleInfo?.source || null,
+    };
+  }
+
   for (const skillsRoot of skillDirs) {
     const entries = await readdir(skillsRoot, { withFileTypes: true });
     for (const entry of entries) {
@@ -437,61 +618,49 @@ async function scanSkills(scope) {
       // Skip "private" directory (usually copies of global skills)
       if (entry.name === "private") continue;
 
-      const skillDir = join(skillsRoot, entry.name);
-      const skillMd = join(skillDir, "SKILL.md");
-      if (!(await exists(skillMd))) continue;
+      const item = await readSkillEntry(skillsRoot, entry.name);
+      if (item) items.push(item);
+    }
+  }
 
-      const s = await safeStat(skillMd);
-      const content = await safeReadFile(skillMd);
+  const installedPluginsFile = join(CLAUDE_DIR, "plugins", "installed_plugins.json");
+  const installedContent = await safeReadFile(installedPluginsFile);
+  if (installedContent) {
+    let installedData;
+    try { installedData = JSON.parse(installedContent); } catch { installedData = null; }
 
-      // Extract description: first meaningful paragraph line after the heading
-      let description = "";
-      if (content) {
-        const lines = content.split("\n");
-        let pastHeading = false;
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (trimmed.startsWith("# ")) { pastHeading = true; continue; }
-          if (!pastHeading) continue;
-          // Skip empty lines, frontmatter-like lines, code blocks, list items
-          if (!trimmed) continue;
-          if (trimmed.startsWith("```") || trimmed.startsWith("-") || trimmed.startsWith("|")) continue;
-          if (trimmed.match(/^\w+:\s/)) continue; // skip "name: foo" style lines
-          if (trimmed.startsWith("##")) continue;
-          description = trimmed.slice(0, 120);
-          break;
+    for (const [pluginName, installs] of Object.entries(installedData?.plugins || {})) {
+      for (const install of installs || []) {
+        const isUserScope = install.scope === "user";
+        const isProjectScope = install.scope === "project" && install.projectPath;
+
+        let belongs = false;
+        if (scope.id === "global" && isUserScope) {
+          belongs = true;
+        } else if (scope.type === "project" && isProjectScope) {
+          const pluginEncoded = encodeClaudeProjectName(install.projectPath);
+          belongs = pluginEncoded === scope.id ||
+            Boolean(scope.repoDir && install.projectPath.toLowerCase() === scope.repoDir.toLowerCase());
+        }
+        if (!belongs || !install.installPath) continue;
+
+        const pluginSkillsDir = join(install.installPath, "skills");
+        if (!(await exists(pluginSkillsDir))) continue;
+
+        let entries;
+        try {
+          entries = await readdir(pluginSkillsDir, { withFileTypes: true });
+        } catch {
+          continue;
+        }
+
+        for (const entry of entries) {
+          if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+          if (entry.name === "private") continue;
+          const item = await readSkillEntry(pluginSkillsDir, entry.name, pluginName);
+          if (item) items.push(item);
         }
       }
-
-      // Count files in skill directory
-      const allFiles = await readdir(skillDir, { withFileTypes: true });
-      const fileCount = allFiles.filter(f => f.isFile()).length;
-
-      // Total size of skill directory
-      let totalSize = 0;
-      for (const f of allFiles.filter(f => f.isFile())) {
-        const fs = await safeStat(join(skillDir, f.name));
-        if (fs) totalSize += fs.size;
-      }
-
-      // Bundle detection from skills-lock.json
-      const bundleInfo = bundleMap.get(entry.name);
-
-      items.push({
-        category: "skill",
-        scopeId: scope.id,
-        name: entry.name,
-        fileName: entry.name, // directory name
-        description,
-        subType: "skill",
-        size: formatSize(totalSize),
-        sizeBytes: totalSize,
-        fileCount,
-        mtime: s ? s.mtime.toISOString().slice(0, 16) : "",
-        ctime: s ? s.birthtime.toISOString().slice(0, 16) : "",
-        path: skillDir,
-        bundle: bundleInfo?.source || null,
-      });
     }
   }
 
