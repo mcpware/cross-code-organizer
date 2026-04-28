@@ -615,6 +615,12 @@ function setupItemList() {
 
     if (event.target.closest(".item-chk")) return;
 
+    const effectiveEmptyBtn = event.target.closest(".effective-empty-btn");
+    if (effectiveEmptyBtn) {
+      enableShowEffective();
+      return;
+    }
+
     // Click on security flag → open security panel and expand that server
     const secFlag = event.target.closest(".item-sec-flag");
     if (secFlag) {
@@ -1254,6 +1260,15 @@ function renderMainContent() {
     .filter((entry) => entry.items.length > 0);
 
   if (categories.length === 0) {
+    const selectedCategory = activeFilters.size === 1 ? [...activeFilters][0] : null;
+    const effectivePrompt = selectedCategory ? renderContextualEffectivePrompt(scope.id, selectedCategory, []) : "";
+    if (!searchQuery && effectivePrompt) {
+      const config = getCategoryConfig(selectedCategory);
+      itemList.innerHTML = `
+        <div class="empty-state empty-centered">No ${esc(config.label.toLowerCase())} found in this scope.</div>
+        ${effectivePrompt}`;
+      return;
+    }
     const message = searchQuery
       ? "No items match the current search in this scope."
       : activeFilters.size > 0
@@ -1267,6 +1282,7 @@ function renderMainContent() {
     const config = getCategoryConfig(category);
     const catKey = `${scope.id}::${category}`;
     const collapsed = searchQuery ? false : uiState.collapsedCats.has(catKey);
+    const effectivePrompt = renderContextualEffectivePrompt(scope.id, category, catItems);
 
     return `
       <div class="cat-section" data-cat-section="${esc(category)}">
@@ -1289,11 +1305,74 @@ function renderMainContent() {
               <div class="sortable-zone" data-scope="${esc(scope.id)}" data-group="${config.group || "none"}">
                 ${catItems.map((item) => renderItem(item)).join("")}
               </div>`}
+          ${effectivePrompt}
         </div>
       </div>`;
   }).join("");
 
   updateSelectedItemHighlight();
+}
+
+function enableShowEffective() {
+  if (!hasCapability("effective")) return;
+  const scope = getScopeById(selectedScopeId);
+  if (!scope || scope.id === "global") return;
+  showEffective = true;
+  computeEffectiveSets(selectedScopeId);
+  document.getElementById("inheritToggleBtn")?.classList.add("active");
+  renderAll();
+}
+
+function renderContextualEffectivePrompt(scopeId, category, localItems) {
+  if (!hasCapability("effective") || showEffective || scopeId === "global" || searchQuery) return "";
+  if (!getEffectiveRule(category) || localItems.length > 2) return "";
+
+  const localNames = new Set(localItems.map((item) => item.name));
+  const globalItems = (data?.items || []).filter((item) => {
+    if (item.scopeId !== "global" || item.category !== category) return false;
+    if ((category === "mcp" || category === "agent") && localNames.has(item.name)) return false;
+    return true;
+  });
+  const ancestorScopes = _getAncestorScopes(scopeId, data?.scopes || []);
+  const ancestorItems = (category === "config" || category === "memory")
+    ? (data?.items || []).filter((item) => ancestorScopes.some((scope) => scope.id === item.scopeId) && item.category === category)
+    : [];
+  const total = globalItems.length + ancestorItems.length;
+  if (total === 0) return "";
+
+  const sources = [];
+  if (globalItems.length) sources.push("Global");
+  if (ancestorItems.length) sources.push("parent scopes");
+  const label = getCategorySingularLabel(category);
+  return `
+    <div class="effective-empty-state">
+      <span>${esc(pluralizeCategoryLabel(total, label))} from ${esc(sources.join(" and "))} also apply here.</span>
+      <button type="button" class="effective-empty-btn">Show Effective</button>
+    </div>`;
+}
+
+function getCategorySingularLabel(category) {
+  const labels = {
+    mcp: "MCP server",
+    memory: "memory",
+    skill: "skill",
+    command: "command",
+    agent: "agent",
+    config: "config file",
+    hook: "hook",
+    setting: "setting",
+    rule: "rule",
+    plan: "plan",
+    profile: "profile",
+  };
+  if (labels[category]) return labels[category];
+  return (getCategoryConfig(category).label || category).replace(/s$/i, "").toLowerCase();
+}
+
+function pluralizeCategoryLabel(count, singular) {
+  if (count === 1) return `1 ${singular}`;
+  if (singular.endsWith("y")) return `${count} ${singular.slice(0, -1)}ies`;
+  return `${count} ${singular}s`;
 }
 
 function renderSkillCategory(scopeId, group, items) {

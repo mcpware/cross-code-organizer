@@ -498,6 +498,34 @@ body {
   color: oklch(0.35 0.1 85);
 }
 
+.effective-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 10px 0 4px 28px;
+  padding: 14px 16px;
+  min-height: 72px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-inset);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+.effective-empty-btn {
+  border: 1px solid var(--accent-light);
+  border-radius: 6px;
+  background: var(--accent-light);
+  color: var(--accent-text);
+  cursor: pointer;
+  flex-shrink: 0;
+  font-family: inherit;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 5px 10px;
+}
+.effective-empty-btn:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+
 .approval-badge { font-size: 0.55rem; font-weight: 600; padding: 1px 5px; border-radius: 3px; margin-left: 4px; letter-spacing: 0.3px; background: transparent; }
 .approval-approved { border: 1px solid oklch(0.6 0.15 145); color: oklch(0.45 0.12 145); }
 .approval-rejected { border: 1px solid oklch(0.6 0.15 25); color: oklch(0.45 0.15 25); }
