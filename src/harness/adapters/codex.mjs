@@ -10,8 +10,11 @@ import { basename, extname, join, relative } from "node:path";
 import {
   exists,
   formatSize,
+  parseJsonLine,
   parseFrontmatter,
+  readFirstLines,
   readJson,
+  readLastLines,
   safeReadFile,
   safeStat,
 } from "../fs-utils.mjs";
@@ -127,6 +130,17 @@ const categories = [
     source: "~/.codex/plugins",
     preview: "plugin directory",
   }),
+  defineCategory({
+    id: "session",
+    label: "Sessions",
+    filterLabel: "Sessions",
+    icon: "💬",
+    order: 80,
+    group: "session",
+    source: "~/.codex/sessions and ~/.codex/session_index.jsonl",
+    preview: "session JSONL",
+    sortDefault: "date",
+  }),
 ];
 
 const scopeTypes = [
@@ -138,7 +152,7 @@ const capabilities = {
   mcpControls: false,
   mcpPolicy: false,
   mcpSecurity: true,
-  sessions: false,
+  sessions: true,
   effective: false,
   backup: false,
 };
@@ -172,6 +186,105 @@ function objectEntries(value) {
   return value && typeof value === "object" && !Array.isArray(value)
     ? Object.entries(value)
     : [];
+}
+
+function compactText(value, maxLength = 120) {
+  return typeof value === "string"
+    ? value.replace(/\s+/g, " ").trim().slice(0, maxLength)
+    : "";
+}
+
+async function findFilesBySuffix(root, suffix, maxDepth = 8, current = root, depth = 0) {
+  const files = [];
+  if (depth > maxDepth || !(await exists(current))) return files;
+
+  let entries;
+  try { entries = await readdir(current, { withFileTypes: true }); } catch { return files; }
+
+  for (const entry of entries) {
+    const path = join(current, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await findFilesBySuffix(root, suffix, maxDepth, path, depth + 1));
+    } else if (entry.isFile() && entry.name.endsWith(suffix)) {
+      files.push(path);
+    }
+  }
+
+  return files;
+}
+
+function extractSessionId(fileName) {
+  const rollout = fileName.match(/rollout-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-([0-9a-f-]{36})\.jsonl$/i);
+  if (rollout) return rollout[1];
+  return fileName.replace(/\.jsonl$/, "");
+}
+
+function contentText(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map(part => typeof part?.text === "string" ? part.text : "")
+      .filter(Boolean)
+      .join("\n");
+  }
+  return "";
+}
+
+function userTextFromRecord(record) {
+  if (record?.type === "user_message" && typeof record?.payload?.message === "string") {
+    return record.payload.message;
+  }
+  if (record?.type === "response_item" && record?.payload?.role === "user") {
+    return contentText(record.payload.content);
+  }
+  if (record?.payload?.type === "message" && record?.payload?.role === "user") {
+    return contentText(record.payload.content);
+  }
+  return "";
+}
+
+async function readSessionIndex(ctx) {
+  const path = join(codexDir(ctx), "session_index.jsonl");
+  const content = await safeReadFile(path);
+  const stat = await safeStat(path);
+  const entries = new Map();
+
+  if (content) {
+    for (const line of content.split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      const record = parseJsonLine(line);
+      if (!record?.id) continue;
+      entries.set(record.id, record);
+    }
+  }
+
+  return { path, stat, entries, lineCount: entries.size };
+}
+
+async function sessionMetadata(path, stat) {
+  const [headLines, tailLines] = await Promise.all([
+    readFirstLines(path, 12),
+    readLastLines(path, 40, stat?.size || 0),
+  ]);
+
+  let meta = null;
+  for (const line of headLines) {
+    const record = parseJsonLine(line);
+    if (record?.type === "session_meta" && record.payload) {
+      meta = record.payload;
+      break;
+    }
+  }
+
+  let description = "";
+  for (let i = tailLines.length - 1; i >= 0; i--) {
+    const text = compactText(userTextFromRecord(parseJsonLine(tailLines[i])), 120);
+    if (!text || text.startsWith("<environment_context>")) continue;
+    description = text;
+    break;
+  }
+
+  return { meta, description };
 }
 
 function configDescription(config) {
@@ -478,6 +591,65 @@ async function scanPlugins(scope, ctx) {
   return items;
 }
 
+async function scanSessions(scope, ctx) {
+  if (scope.id !== "global") return [];
+
+  const items = [];
+  const root = join(codexDir(ctx), "sessions");
+  const index = await readSessionIndex(ctx);
+
+  if (index.stat) {
+    items.push({
+      category: "session",
+      scopeId: scope.id,
+      name: "session_index.jsonl",
+      fileName: "session_index.jsonl",
+      description: `${index.lineCount} indexed Codex sessions`,
+      subType: "session-index",
+      ...statFields(index.stat),
+      path: index.path,
+      valueType: "jsonl",
+    });
+  }
+
+  const sessionFiles = await findFilesBySuffix(root, ".jsonl", 8);
+  sessionFiles.sort();
+
+  for (const path of sessionFiles) {
+    const stat = await safeStat(path);
+    const fileName = basename(path);
+    const sessionId = extractSessionId(fileName);
+    const indexed = index.entries.get(sessionId);
+    const { meta, description } = await sessionMetadata(path, stat);
+    const cwd = meta?.cwd || "";
+    const rel = relative(root, path);
+    const datePath = rel.split("/").slice(0, 3).join("/");
+
+    items.push({
+      category: "session",
+      scopeId: scope.id,
+      name: indexed?.thread_name || sessionId,
+      fileName,
+      description: description || cwd || datePath,
+      subType: indexed ? "indexed-session" : "session",
+      ...statFields(stat),
+      path,
+      sessionId,
+      cwd,
+      model: meta?.model_provider || "",
+      cliVersion: meta?.cli_version || "",
+      value: {
+        indexed: Boolean(indexed),
+        updatedAt: indexed?.updated_at || meta?.timestamp || "",
+        datePath,
+      },
+      valueType: "session-jsonl",
+    });
+  }
+
+  return items;
+}
+
 const unsupportedOperations = {
   getValidDestinations() {
     return [];
@@ -530,6 +702,7 @@ export const codexAdapter = {
     profile: scanProfiles,
     rule: scanRules,
     plugin: scanPlugins,
+    session: scanSessions,
   },
   afterScan() {
     return { effective: noEffectiveModel };
