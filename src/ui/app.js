@@ -3725,9 +3725,12 @@ function renderMarkdown(text) {
   if (!text) return "";
   // Strip YAML frontmatter
   let content = text.replace(/^---\n[\s\S]*?\n---\n?/, "").trim();
-  // Fallback if marked CDN failed to load
-  if (typeof marked === "undefined") return `<pre>${esc(content)}</pre>`;
-  return marked.parse(content);
+  try {
+    if (typeof marked === "undefined") return `<pre>${esc(content)}</pre>`;
+    if (typeof marked.parse === "function") return marked.parse(content);
+    if (typeof marked === "function") return marked(content);
+  } catch {}
+  return `<pre>${esc(content)}</pre>`;
 }
 
 // ── MCP Policy Panel ──────────────────────────────────────────────
