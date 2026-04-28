@@ -137,7 +137,7 @@ const capabilities = {
   contextBudget: false,
   mcpControls: false,
   mcpPolicy: false,
-  mcpSecurity: false,
+  mcpSecurity: true,
   sessions: false,
   effective: false,
   backup: false,

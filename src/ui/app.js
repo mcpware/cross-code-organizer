@@ -149,11 +149,10 @@ async function init() {
     updateHarnessBranding();
     updateCapabilityVisibility();
     setupScopeNotice();
-    // Load cached scan results + check for new servers BEFORE first render
-    if (hasCapability("mcpSecurity")) {
-      await loadCachedSecurityResults();
-      await checkForNewMcpServers();
-    }
+    // Load cached scan results + check for new servers BEFORE first render.
+    // MCP tool-definition scanning is harness-agnostic.
+    await loadCachedSecurityResults();
+    await checkForNewMcpServers();
     renderAll();
     checkForUpdate();
   } catch (error) {
@@ -307,10 +306,8 @@ async function switchHarness(harnessId) {
   updateHarnessSelector();
   updateHarnessBranding();
   updateCapabilityVisibility();
-  if (hasCapability("mcpSecurity")) {
-    await loadCachedSecurityResults();
-    await checkForNewMcpServers();
-  }
+  await loadCachedSecurityResults();
+  await checkForNewMcpServers();
   renderAll();
 }
 
@@ -414,13 +411,11 @@ function updateCapabilityVisibility() {
   const ctxBtn = document.getElementById("ctxBudgetBtn");
   const mcpBtn = document.getElementById("mcpControlsBtn");
   const effectiveBtn = document.getElementById("inheritToggleBtn");
-  const securityBtn = document.getElementById("securityScanBtn");
   const exportBtn = document.getElementById("exportBtn");
 
   ctxBtn?.classList.toggle("hidden", !hasCapability("contextBudget"));
   mcpBtn?.classList.toggle("hidden", !hasCapability("mcpControls"));
   effectiveBtn?.classList.toggle("hidden", !hasCapability("effective"));
-  securityBtn?.classList.toggle("hidden", !hasCapability("mcpSecurity"));
   exportBtn?.classList.toggle("hidden", !hasCapability("backup"));
 
   if (!hasCapability("contextBudget")) closeContextBudget();
@@ -1369,13 +1364,13 @@ function renderItem(item) {
   const dragHandle = item.locked ? "" : `<span class="drag-handle" title="Drag to move">⠿</span>`;
 
   // Security badge for MCP items
-  const secSev = item.category === "mcp" && hasCapability("mcpSecurity") ? getSecuritySeverity(item.name) : null;
+  const secSev = item.category === "mcp" ? getSecuritySeverity(item.name) : null;
   const secLabel = secSev === "critical" ? "CRITICAL" : secSev === "high" ? "HIGH" : secSev === "medium" ? "MED" : secSev === "low" ? "LOW" : secSev === "unreachable" ? "UNREACHABLE" : "";
   const secBadgeHtml = secSev
     ? `<span class="sec-badge sec-${secSev} item-sec-flag">${secLabel}</span>`
     : "";
   // Baseline status flag (NEW / CHANGED) for MCP items
-  const blStatus = item.category === "mcp" && hasCapability("mcpSecurity") ? (securityBaselineStatus[item.name] || null) : null;
+  const blStatus = item.category === "mcp" ? (securityBaselineStatus[item.name] || null) : null;
   const blFlagHtml = blStatus === "new"
     ? `<span class="sec-badge sec-new item-sec-flag">NEW</span>`
     : blStatus === "changed"
@@ -3853,7 +3848,6 @@ function setupSecurityScan() {
   // Cached results + new server check loaded in init() before renderAll
 
   btn.addEventListener("click", async () => {
-    if (!hasCapability("mcpSecurity")) return;
     document.getElementById("ctxBudgetPanel")?.classList.add("hidden");
     panel.classList.remove("hidden");
 
