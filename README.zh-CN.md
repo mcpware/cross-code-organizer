@@ -11,9 +11,11 @@
 [![MCP Security](https://img.shields.io/badge/MCP-Security%20Scanner-red)](https://github.com/mcpware/cross-code-organizer)
 [English](README.md) | 简体中文 | [繁體中文](README.zh-TW.md) | [廣東話](README.zh-HK.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Español](README.es.md) | [Bahasa Indonesia](README.id.md) | [Italiano](README.it.md) | [Português](README.pt-BR.md) | [Türkçe](README.tr.md) | [Tiếng Việt](README.vi.md) | [ไทย](README.th.md)
 
-**一个面板看清 Claude Code 實際 load 咗啲乜入 context — 扫描有毒的 MCP server、回收浪费的 token、修复放错位置的配置。全部在一个窗口搞定。**
+**Cross-Code Organizer (CCO) 现在是 universal AI coding tool config manager：一个面板管理 Claude Code 和 Codex CLI 的 config、MCP server、skills、sessions 与 runtime 文件。Sidebar 有 harness selector，可以在两个 tool 之间切换。**
 
-> **隐私：** CCO 只读取你本机的 Claude Code config 檔案（global 同 project 層面）。不会发送任何数据。零 telemetry。
+> **v0.19.0：** Codex CLI 正式成为第二个 supported harness。之后会加 Cursor、Windsurf、Aider。
+
+> **隐私：** CCO 只读取你本机所选 harness 的 config 文件（`~/.claude/`、`~/.codex/` 同 project 层面）。不会发送 usage telemetry。
 
 ![Cross-Code Organizer (CCO) Demo](docs/demo.gif)
 
@@ -23,7 +25,7 @@
 
 ## 循环：扫、找、修
 
-每次使用 Claude Code，有三件事在悄悄发生：
+每次使用 AI coding tool，有三件事在悄悄发生：
 
 1. **你不知道 Claude 实际加载了什么。** 每个类别的规则都不一样 — MCP server 跟 precedence、agent 靠名互相 shadow、settings 跨檔案 merge。你是翻好几个目录才知道哪些东西真正在生效。
 
@@ -45,7 +47,7 @@
 
 **跟只会扫描的工具有什么不同？** CCO 发现问题后你直接点击 finding，马上跳到那个 MCP server 条目。要删要移要看配置，不用切工具。
 
-**想马上试？把这段贴进 Claude Code：**
+**想马上试？把这段贴进 Claude Code 或 Codex CLI：**
 
 ```
 Run npx @mcpware/cross-code-organizer and tell me the URL when it's ready.
@@ -53,7 +55,7 @@ Run npx @mcpware/cross-code-organizer and tell me the URL when it's ready.
 
 或者直接跑：`npx @mcpware/cross-code-organizer`
 
-> 第一次运行会自动安装 `/cco` skill — 之后在任何 Claude Code session 输入 `/cco` 就行。
+> 第一次运行会替 Claude Code 自动安装 `/cco` skill。Codex CLI 用户可以直接跑同一条 `npx` command，再在 sidebar 选 harness。
 
 ## 有什么不同
 
@@ -67,6 +69,15 @@ Run npx @mcpware/cross-code-organizer and tell me the URL when it's ready.
 | 批量操作 | **有** | 否 | 否 | 否 |
 | 零安装（`npx`） | **有** | 看情况 | 否 (Tauri/Electron) | 否 (VS Code) |
 | MCP tools（AI 自己識用） | **有** | 否 | 否 | 否 |
+| 多 harness 支持 | **Claude Code + Codex CLI** | 否 | 否 | 否 |
+
+## Cross-Harness：Claude Code + Codex CLI
+
+CCO 本来是 Claude Code organizer。v0.19.0 开始，它变成 cross-harness dashboard。
+
+Sidebar 的 **Harness** selector 可以在 Claude Code 和 Codex CLI 之间切换。每个 harness 保留自己的路径、分类和规则：Claude Code 管 memories、skills、MCP、commands、agents、hooks；Codex CLI 管 `~/.codex` config、AGENTS 文件、skills、MCP servers、profiles、sessions、history、shell snapshots 和 runtime 文件。
+
+下一步会加 Cursor、Windsurf 和 Aider。
 
 ## 你的 Context 被什么吃掉了
 
@@ -134,8 +145,8 @@ CCO 会连接每个 MCP server，拿到实际的 tool 定义，然后运行：
 
 ## 工作原理
 
-1. **扫描** `~/.claude/` — 发现所有 11 个类别，跨所有项目
-2. **解析项目** — 从文件系统路径发现项目，映射到 Claude Code 的 Global/Project 模型
+1. **扫描所选 harness** — Claude Code 用 `~/.claude/`，Codex CLI 用 `~/.codex/` 加 trusted project config
+2. **解析项目** — 从文件系统路径发现项目，映射到所选 harness 的 Global/Project 模型
 3. **渲染面板** — 项目列表、分类项目、详情面板含内容预览
 
 ## 平台支持
@@ -153,8 +164,9 @@ CCO 会连接每个 MCP server，拿到实际的 tool 定义，然后运行：
 |------|:----:|------|
 | **Config Export/Backup** | ✅ 已完成 | 一点击匯出所有 config 去 `~/.claude/exports/` |
 | **Security Scanner** | ✅ 已完成 | 60 個 pattern、9 種 deobfuscation、rug-pull 偵測、NEW/CHANGED/UNREACHABLE badge |
+| **Codex CLI Harness** | ✅ 已完成 | Sidebar selector、`~/.codex` scanner、Codex skills/config/profiles/sessions/history/runtime |
 | **Config Health Score** | 📋 计划中 | 每個 project 出個健康分數 |
-| **Cross-Harness Portability** | 📋 计划中 | Claude Code ↔ Cursor ↔ Codex ↔ Gemini CLI 之間互轉 |
+| **Cross-Harness Portability** | 📋 计划中 | Claude Code、Codex CLI、Cursor、Windsurf、Aider 之间互转 |
 | **CLI / JSON Output** | 📋 计划中 | Headless 跑 scan 俾 CI/CD pipeline 用 |
 | **Team Config Baselines** | 📋 计划中 | 定義團隊統一嘅 MCP/skill 標準 |
 | **Cost Tracker** | 💡 探索中 | 追蹤每個 session、project 嘅 token 用量 |
@@ -181,6 +193,6 @@ MIT
 
 ## 作者
 
-[ithiria894](https://github.com/ithiria894) — 为 Claude Code 生态构建工具。。
+[ithiria894](https://github.com/ithiria894) — 为 AI coding tool 生态构建工具。
 
 [![cross-code-organizer MCP server](https://glama.ai/mcp/servers/mcpware/cross-code-organizer/badges/card.svg)](https://glama.ai/mcp/servers/mcpware/cross-code-organizer)

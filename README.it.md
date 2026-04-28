@@ -11,9 +11,11 @@
 [![MCP Security](https://img.shields.io/badge/MCP-Security%20Scanner-red)](https://github.com/mcpware/cross-code-organizer)
 [English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [廣東話](README.zh-HK.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Español](README.es.md) | [Bahasa Indonesia](README.id.md) | Italiano | [Português](README.pt-BR.md) | [Türkçe](README.tr.md) | [Tiếng Việt](README.vi.md) | [ไทย](README.th.md)
 
-**Tutto quello che Claude Code carica in context, in una sola dashboard. Scova server MCP compromessi, recupera i token buttati via e sistema le config finite nello scope sbagliato. Senza mai uscire dalla finestra.**
+**Cross-Code Organizer (CCO)** ora è il universal AI coding tool config manager: una dashboard per gestire config di Claude Code e Codex CLI — server MCP, skill, sessioni, profili, runtime e file di progetto — senza uscire dalla finestra. Nel sidebar c'è un harness selector per passare da un tool all'altro.
 
-> **Privacy:** CCO legge solo la directory `~/.claude/` in locale. Non tocca API key, non legge conversazioni, non manda niente fuori. Zero telemetry.
+> **v0.19.0:** Codex CLI è il secondo harness supportato. Cursor, Windsurf e Aider sono i prossimi in roadmap.
+
+> **Privacy:** CCO legge solo i file di config dell'harness selezionato (`~/.claude/`, `~/.codex/` e config di progetto). Non invia usage telemetry.
 
 ![Cross-Code Organizer (CCO) Demo](docs/demo.gif)
 
@@ -23,7 +25,7 @@
 
 ## Il ciclo: Scansiona, Trova, Correggi
 
-Ogni volta che apri Claude Code, succedono tre cose di cui non ti accorgi:
+Ogni volta che apri un AI coding tool, succedono tre cose di cui non ti accorgi:
 
 1. **Le config finiscono nello scope sbagliato.** Hai una skill Python in Global? Viene caricata in tutti i tuoi progetti React. Una memory che hai impostato in un progetto? Resta lì. Gli altri progetti non la vedono. Claude se ne frega dello scope quando crea roba.
 
@@ -45,7 +47,7 @@ Ci sono altri tool che risolvono questi problemi, ma uno alla volta. **CCO li ri
 
 **La differenza rispetto agli scanner standalone:** quando CCO trova qualcosa, ci clicchi sopra e atterri sulla voce del server MCP nello scope list. Cancellalo, spostalo, guarda la config — senza cambiare tool.
 
-**Per partire — incolla questo in Claude Code:**
+**Per partire — incolla questo in Claude Code o Codex CLI:**
 
 ```
 Run npx @mcpware/cross-code-organizer and tell me the URL when it's ready.
@@ -53,7 +55,7 @@ Run npx @mcpware/cross-code-organizer and tell me the URL when it's ready.
 
 Oppure lancialo direttamente: `npx @mcpware/cross-code-organizer`
 
-> Al primo avvio si installa in automatico una skill `/cco` — da quel momento ti basta scrivere `/cco` in qualsiasi sessione di Claude Code per riaprirlo.
+> Al primo avvio si installa in automatico una skill `/cco` per Claude Code. Se usi Codex CLI, lancia lo stesso comando `npx` e cambia harness dal sidebar.
 
 ## Cosa lo rende diverso
 
@@ -67,6 +69,15 @@ Oppure lancialo direttamente: `npx @mcpware/cross-code-organizer`
 | Operazioni in blocco | **Sì** | No | No | No |
 | Zero-install (`npx`) | **Sì** | Dipende | No (Tauri/Electron) | No (VS Code) |
 | Tool MCP (accessibili dall'AI) | **Sì** | No | No | No |
+| Supporto multi-harness | **Claude Code + Codex CLI** | No | No | No |
+
+## Cross-Harness: Claude Code + Codex CLI
+
+CCO è nato come organizer per Claude Code. Dalla v0.19.0 diventa una dashboard cross-harness.
+
+Usa il selector **Harness** nel sidebar per passare tra Claude Code e Codex CLI. Ogni harness mantiene path, categorie e regole proprie: Claude Code gestisce memories, skill, MCP, command, agent e hook; Codex CLI gestisce config `~/.codex`, file AGENTS, skill, MCP server, profile, session, history, shell snapshot e runtime.
+
+I prossimi harness pianificati sono Cursor, Windsurf e Aider.
 
 ## Sai cosa si mangia il tuo context?
 
@@ -138,8 +149,8 @@ CCO si connette a ogni server MCP, prende le definizioni reali dei tool e le fa 
 
 ## Come funziona
 
-1. **Scansiona** `~/.claude/` — scopre tutte le 11 categorie in ogni scope
-2. **Risolve la gerarchia degli scope** — capisce le relazioni padre-figlio dai path del filesystem
+1. **Scansiona l'harness selezionato** — `~/.claude/` per Claude Code, `~/.codex/` più config di progetti fidati per Codex CLI
+2. **Risolve gli scope di progetto** — scansiona i progetti dai path del filesystem e li mappa al modello Global/Project dell'harness selezionato
 3. **Mostra una dashboard** — scope list, elementi per categoria, pannello di dettaglio con anteprima del contenuto
 
 ## Piattaforme supportate
@@ -157,8 +168,9 @@ CCO si connette a ogni server MCP, prende le definizioni reali dei tool e le fa 
 |---------|:-----:|-------------|
 | **Config Export/Backup** | ✅ Fatto | Esporta tutte le config con un click in `~/.claude/exports/`, organizzate per scope |
 | **Security Scanner** | ✅ Fatto | 60 pattern, 9 tecniche di deobfuscation, rilevamento rug-pull, badge NEW/CHANGED/UNREACHABLE |
+| **Codex CLI Harness** | ✅ Fatto | Selector nel sidebar, scanner `~/.codex`, supporto Codex skills/config/profiles/sessions/history/runtime |
 | **Config Health Score** | 📋 Previsto | Punteggio di salute per progetto con consigli pratici |
-| **Cross-Harness Portability** | 📋 Previsto | Converti skill e config tra Claude Code ↔ Cursor ↔ Codex ↔ Gemini CLI |
+| **Cross-Harness Portability** | 📋 Previsto | Converti skill e config tra Claude Code, Codex CLI, Cursor, Windsurf e Aider |
 | **CLI / JSON Output** | 📋 Previsto | Scansioni headless per pipeline CI/CD — `cco scan --json` |
 | **Team Config Baselines** | 📋 Previsto | Definisci e imponi standard MCP/skill di team su tutti i dev |
 | **Cost Tracker** | 💡 In esplorazione | Traccia l'uso di token e il costo per sessione e per progetto |
@@ -181,6 +193,6 @@ MIT
 
 ## Autore
 
-[ithiria894](https://github.com/ithiria894) — Costruisce tool per l'ecosistema Claude Code.
+[ithiria894](https://github.com/ithiria894) — Costruisce tool per l'ecosistema degli AI coding tool.
 
 [![cross-code-organizer MCP server](https://glama.ai/mcp/servers/mcpware/cross-code-organizer/badges/card.svg)](https://glama.ai/mcp/servers/mcpware/cross-code-organizer)

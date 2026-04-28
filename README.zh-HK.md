@@ -11,9 +11,11 @@
 [![MCP Security](https://img.shields.io/badge/MCP-Security%20Scanner-red)](https://github.com/mcpware/cross-code-organizer)
 [English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | 廣東話 | [日本語](README.ja.md) | [한국어](README.ko.md) | [Español](README.es.md) | [Bahasa Indonesia](README.id.md) | [Italiano](README.it.md) | [Português](README.pt-BR.md) | [Türkçe](README.tr.md) | [Tiếng Việt](README.vi.md) | [ไทย](README.th.md)
 
-**一個 dashboard 睇晒 Claude Code 實際 load 咗啲乜入 context — 掃有毒 MCP server、搵返浪費咗嘅 token、搬返擺錯位嘅 config。全部一個 window 搞掂。**
+**Cross-Code Organizer (CCO) 而家係 universal AI coding tool config manager：一個 dashboard 管晒 Claude Code 同 Codex CLI 嘅 config、MCP server、skills、sessions 同 runtime 檔。Sidebar 有 harness selector，一撳就喺兩個 tool 之間切換。**
 
-> **私隱：** CCO 讀你本機嘅 Claude Code config 檔案（global 同 project 層面）。冇嘢會傳出去。零 telemetry。
+> **v0.19.0：** Codex CLI 正式成為第二個 supported harness。之後會加 Cursor、Windsurf、Aider。
+
+> **私隱：** CCO 讀你本機所選 harness 嘅 config 檔案（`~/.claude/`、`~/.codex/` 同 project 層面）。冇 usage telemetry。
 
 ![Cross-Code Organizer (CCO) Demo](docs/demo.gif)
 
@@ -23,7 +25,7 @@
 
 ## 個 Loop：掃、搵、修
 
-你每次用 Claude Code，有三樣嘢靜靜雞喺度發生：
+你每次用 AI coding tool，有三樣嘢靜靜雞喺度發生：
 
 1. **你唔知 Claude 實際 load 緊乜。** 每種 category 嘅規則都唔同 — MCP server 跟 precedence、agent 靠名互相 shadow、settings 跨檔案 merge。你要翻幾個 directory 先知邊啲嘢真係生效緊。
 
@@ -45,7 +47,7 @@
 
 **同淨係識 scan 嘅工具有乜分別？** CCO 搵到嘢之後你直接撳個 finding，即刻跳去嗰個 MCP server entry。要刪要搬要睇 config，唔使切工具。
 
-**想即刻試？貼呢段入去 Claude Code：**
+**想即刻試？貼呢段入去 Claude Code 或 Codex CLI：**
 
 ```
 Run npx @mcpware/cross-code-organizer and tell me the URL when it's ready.
@@ -53,7 +55,7 @@ Run npx @mcpware/cross-code-organizer and tell me the URL when it's ready.
 
 或者自己跑：`npx @mcpware/cross-code-organizer`
 
-> 第一次跑會自動裝個 `/cco` skill — 之後喺任何 Claude Code session 打 `/cco` 就得。
+> 第一次跑會幫 Claude Code 自動裝個 `/cco` skill。Codex CLI 用家可以直接跑同一條 `npx` command，再喺 sidebar 揀 harness。
 
 ## 有乜唔同
 
@@ -67,6 +69,15 @@ Run npx @mcpware/cross-code-organizer and tell me the URL when it's ready.
 | 批量操作 | **有** | 冇 | 冇 | 冇 |
 | 零安裝（`npx`） | **有** | 睇彩 | 冇 (Tauri/Electron) | 冇 (VS Code) |
 | MCP tools（AI 自己識用） | **有** | 冇 | 冇 | 冇 |
+| 多 harness 支援 | **Claude Code + Codex CLI** | 冇 | 冇 | 冇 |
+
+## Cross-Harness：Claude Code + Codex CLI
+
+CCO 本來係 Claude Code organizer。v0.19.0 開始，佢變成 cross-harness dashboard。
+
+Sidebar 嘅 **Harness** selector 可以喺 Claude Code 同 Codex CLI 之間切換。每個 harness 保留自己嘅路徑、分類同規則：Claude Code 管 memories、skills、MCP、commands、agents、hooks；Codex CLI 管 `~/.codex` config、AGENTS 檔、skills、MCP servers、profiles、sessions、history、shell snapshots 同 runtime 檔。
+
+下一步會加 Cursor、Windsurf 同 Aider。
 
 ## 你嘅 Context 畀乜嘢食緊
 
@@ -134,8 +145,8 @@ CCO 會連去每個 MCP server，攞返實際嘅 tool 定義，然後跑：
 
 ## 點樣運作
 
-1. **掃描** `~/.claude/` — 搵晒全部 11 個類別，跨所有 project
-2. **解析 project** — 由 filesystem 路徑搵出 project，對應返 Claude Code 嘅 Global/Project 模型
+1. **掃描所選 harness** — Claude Code 用 `~/.claude/`，Codex CLI 用 `~/.codex/` 加 trusted project config
+2. **解析 project** — 由 filesystem 路徑搵出 project，對應返所選 harness 嘅 Global/Project 模型
 3. **畫出 dashboard** — project 列表、分類項目、詳情面板連內容預覽
 
 ## 邊啲 Platform 用得
@@ -153,8 +164,9 @@ CCO 會連去每個 MCP server，攞返實際嘅 tool 定義，然後跑：
 |------|:----:|------|
 | **Config Export/Backup** | ✅ 出咗 | 一撳匯出所有 config 去 `~/.claude/exports/` |
 | **Security Scanner** | ✅ 出咗 | 60 個 pattern、9 種 deobfuscation、rug-pull 偵測、NEW/CHANGED/UNREACHABLE badge |
+| **Codex CLI Harness** | ✅ 出咗 | Sidebar selector、`~/.codex` scanner、Codex skills/config/profiles/sessions/history/runtime |
 | **Config Health Score** | 📋 排緊 | 每個 project 出個健康分數 |
-| **Cross-Harness Portability** | 📋 排緊 | Claude Code ↔ Cursor ↔ Codex ↔ Gemini CLI 之間互轉 |
+| **Cross-Harness Portability** | 📋 排緊 | Claude Code、Codex CLI、Cursor、Windsurf、Aider 之間互轉 |
 | **CLI / JSON Output** | 📋 排緊 | Headless 跑 scan 俾 CI/CD pipeline 用 |
 | **Team Config Baselines** | 📋 排緊 | 定義團隊統一嘅 MCP/skill 標準 |
 | **Cost Tracker** | 💡 諗緊 | 追蹤每個 session、project 嘅 token 用量 |
@@ -181,6 +193,6 @@ MIT
 
 ## 作者
 
-[ithiria894](https://github.com/ithiria894) — 幫 Claude Code 生態圈整工具嘅人。
+[ithiria894](https://github.com/ithiria894) — 幫 AI coding tool 生態圈整工具嘅人。
 
 [![cross-code-organizer MCP server](https://glama.ai/mcp/servers/mcpware/cross-code-organizer/badges/card.svg)](https://glama.ai/mcp/servers/mcpware/cross-code-organizer)
