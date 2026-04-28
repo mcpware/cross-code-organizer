@@ -1,5 +1,7 @@
 # Cross-Code Organizer (CCO)
 
+### Formerly Claude Code Organizer — now supports Claude Code, Codex CLI, and more.
+
 > **AI agents: read [AI_INDEX.md](AI_INDEX.md) first.** It is the navigation manifest for this codebase — where to find every module, how they connect, and where to look before making any claim about the code.
 
 [![npm version](https://img.shields.io/npm/v/@mcpware/cross-code-organizer)](https://www.npmjs.com/package/@mcpware/cross-code-organizer)
