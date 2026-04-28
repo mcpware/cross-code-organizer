@@ -1,0 +1,539 @@
+/**
+ * Codex CLI harness adapter.
+ *
+ * Scans the global Codex configuration directory at ~/.codex.
+ */
+
+import TOML from "@iarna/toml";
+import { readdir } from "node:fs/promises";
+import { basename, extname, join, relative } from "node:path";
+import {
+  exists,
+  formatSize,
+  parseFrontmatter,
+  readJson,
+  safeReadFile,
+  safeStat,
+} from "../fs-utils.mjs";
+
+function codexDir(ctx) {
+  return join(ctx.home, ".codex");
+}
+
+function timestampFields(stat) {
+  return {
+    mtime: stat ? stat.mtime.toISOString().slice(0, 16) : "",
+    ctime: stat ? stat.birthtime.toISOString().slice(0, 16) : "",
+  };
+}
+
+function statFields(stat) {
+  return {
+    size: stat ? formatSize(stat.size) : "0B",
+    sizeBytes: stat ? stat.size : 0,
+    ...timestampFields(stat),
+  };
+}
+
+function defineCategory({ id, label, filterLabel, icon, order, group, source, preview, movable = false, deletable = false, sortDefault = "name" }) {
+  return {
+    id,
+    label,
+    filterLabel,
+    icon,
+    order,
+    group,
+    source,
+    preview,
+    movable,
+    deletable,
+    participatesInEffective: false,
+    effectiveRule: "",
+    sortDefault,
+  };
+}
+
+const categories = [
+  defineCategory({
+    id: "config",
+    label: "Config",
+    filterLabel: "Config",
+    icon: "⚙️",
+    order: 10,
+    group: "config",
+    source: "~/.codex/config.toml",
+    preview: "TOML file",
+  }),
+  defineCategory({
+    id: "memory",
+    label: "Memories",
+    filterLabel: "Memories",
+    icon: "🧠",
+    order: 20,
+    group: "memory",
+    source: "~/.codex/memories/*.md",
+    preview: "*.md",
+    deletable: true,
+  }),
+  defineCategory({
+    id: "skill",
+    label: "Skills",
+    filterLabel: "Skills",
+    icon: "⚡",
+    order: 30,
+    group: "skill",
+    source: "~/.codex/skills/*/SKILL.md",
+    preview: "SKILL.md",
+    deletable: true,
+  }),
+  defineCategory({
+    id: "mcp",
+    label: "MCP Servers",
+    filterLabel: "MCP",
+    icon: "🔌",
+    order: 40,
+    group: "mcp",
+    source: "~/.codex/config.toml mcp_servers",
+    preview: "mcp_servers entry",
+  }),
+  defineCategory({
+    id: "profile",
+    label: "Profiles",
+    filterLabel: "Profiles",
+    icon: "👤",
+    order: 50,
+    group: "profile",
+    source: "~/.codex/config.toml profiles",
+    preview: "profiles entry",
+  }),
+  defineCategory({
+    id: "rule",
+    label: "Rules",
+    filterLabel: "Rules",
+    icon: "📏",
+    order: 60,
+    group: "rule",
+    source: "~/.codex/rules",
+    preview: "rule file",
+    deletable: true,
+  }),
+  defineCategory({
+    id: "plugin",
+    label: "Plugins",
+    filterLabel: "Plugins",
+    icon: "🧩",
+    order: 70,
+    group: "plugin",
+    source: "~/.codex/plugins",
+    preview: "plugin directory",
+  }),
+];
+
+const scopeTypes = [
+  { id: "global", label: "Global", icon: "🌐", isGlobal: true },
+];
+
+const capabilities = {
+  contextBudget: false,
+  mcpControls: false,
+  mcpPolicy: false,
+  mcpSecurity: false,
+  sessions: false,
+  effective: false,
+  backup: false,
+};
+
+async function discoverScopes(ctx) {
+  return [{
+    id: "global",
+    name: "Global",
+    type: "global",
+    tag: "applies everywhere",
+    parentId: null,
+    repoDir: null,
+    configDir: codexDir(ctx),
+  }];
+}
+
+async function readCodexConfig(ctx) {
+  const path = join(codexDir(ctx), "config.toml");
+  const content = await safeReadFile(path);
+  const stat = await safeStat(path);
+  if (!content) return { path, content: null, stat, config: null, error: null };
+
+  try {
+    return { path, content, stat, config: TOML.parse(content), error: null };
+  } catch (error) {
+    return { path, content, stat, config: null, error };
+  }
+}
+
+function objectEntries(value) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? Object.entries(value)
+    : [];
+}
+
+function configDescription(config) {
+  if (!config || typeof config !== "object") return "Codex CLI configuration";
+  const parts = [
+    config.model ? `model: ${config.model}` : "",
+    config.approval_policy ? `approval: ${config.approval_policy}` : "",
+    config.sandbox_mode ? `sandbox: ${config.sandbox_mode}` : "",
+  ].filter(Boolean);
+  return parts.join(", ") || "Codex CLI configuration";
+}
+
+async function scanConfig(scope, ctx) {
+  const parsed = await readCodexConfig(ctx);
+  if (!parsed.content) return [];
+
+  return [{
+    category: "config",
+    scopeId: scope.id,
+    name: "config.toml",
+    fileName: "config.toml",
+    description: parsed.error ? `TOML parse error: ${parsed.error.message}` : configDescription(parsed.config),
+    subType: "config",
+    ...statFields(parsed.stat),
+    path: parsed.path,
+    locked: true,
+    valueType: parsed.error ? "invalid-toml" : "toml",
+  }];
+}
+
+function markdownDescription(content) {
+  if (!content) return "";
+  const lines = content.split("\n");
+  let pastHeading = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("# ")) { pastHeading = true; continue; }
+    if (!pastHeading && trimmed.startsWith("---")) continue;
+    if (!trimmed || trimmed.startsWith("```") || trimmed.startsWith("-") || trimmed.startsWith("|")) continue;
+    if (trimmed.match(/^\w+:\s/)) continue;
+    if (trimmed.startsWith("#")) continue;
+    return trimmed.slice(0, 120);
+  }
+  return "";
+}
+
+async function scanMemories(scope, ctx) {
+  const dir = join(codexDir(ctx), "memories");
+  const items = [];
+  if (!(await exists(dir))) return items;
+
+  let entries;
+  try { entries = await readdir(dir, { withFileTypes: true }); } catch { return items; }
+
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+    const path = join(dir, entry.name);
+    const stat = await safeStat(path);
+    const content = await safeReadFile(path);
+    const frontmatter = parseFrontmatter(content);
+    items.push({
+      category: "memory",
+      scopeId: scope.id,
+      name: frontmatter.name || entry.name.replace(/\.md$/, ""),
+      fileName: entry.name,
+      description: frontmatter.description || markdownDescription(content),
+      subType: frontmatter.type || "memory",
+      ...statFields(stat),
+      path,
+    });
+  }
+
+  return items;
+}
+
+async function findSkillDirs(root, current = root, depth = 0) {
+  const dirs = [];
+  if (depth > 3 || !(await exists(current))) return dirs;
+
+  if (await exists(join(current, "SKILL.md"))) {
+    dirs.push(current);
+    return dirs;
+  }
+
+  let entries;
+  try { entries = await readdir(current, { withFileTypes: true }); } catch { return dirs; }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+    if (["node_modules", ".git"].includes(entry.name)) continue;
+    dirs.push(...await findSkillDirs(root, join(current, entry.name), depth + 1));
+  }
+
+  return dirs;
+}
+
+async function directorySummary(dir) {
+  let sizeBytes = 0;
+  let fileCount = 0;
+  let newest = null;
+  let oldest = null;
+
+  async function walk(current, depth = 0) {
+    if (depth > 3) return;
+    let entries;
+    try { entries = await readdir(current, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      const path = join(current, entry.name);
+      if (entry.isDirectory()) {
+        await walk(path, depth + 1);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const stat = await safeStat(path);
+      if (!stat) continue;
+      fileCount += 1;
+      sizeBytes += stat.size;
+      newest = !newest || stat.mtime > newest ? stat.mtime : newest;
+      oldest = !oldest || stat.birthtime < oldest ? stat.birthtime : oldest;
+    }
+  }
+
+  await walk(dir);
+
+  return {
+    fileCount,
+    size: formatSize(sizeBytes),
+    sizeBytes,
+    mtime: newest ? newest.toISOString().slice(0, 16) : "",
+    ctime: oldest ? oldest.toISOString().slice(0, 16) : "",
+  };
+}
+
+async function scanSkills(scope, ctx) {
+  const root = join(codexDir(ctx), "skills");
+  const items = [];
+  const skillDirs = await findSkillDirs(root);
+
+  for (const skillDir of skillDirs) {
+    const skillMd = join(skillDir, "SKILL.md");
+    const content = await safeReadFile(skillMd);
+    const rel = relative(root, skillDir);
+    const summary = await directorySummary(skillDir);
+    items.push({
+      category: "skill",
+      scopeId: scope.id,
+      name: rel,
+      fileName: rel,
+      description: markdownDescription(content),
+      subType: rel.startsWith(".system/") ? "system-skill" : "skill",
+      ...summary,
+      path: skillDir,
+      openPath: skillMd,
+    });
+  }
+
+  return items;
+}
+
+function mcpDescription(config) {
+  const cmd = config?.command || config?.url || "";
+  const args = Array.isArray(config?.args) ? config.args : [];
+  return [cmd, ...args].filter(Boolean).join(" ").slice(0, 120) || "(MCP server)";
+}
+
+async function scanMcpServers(scope, ctx) {
+  const parsed = await readCodexConfig(ctx);
+  const servers = parsed.config?.mcp_servers || parsed.config?.mcpServers || {};
+  const items = [];
+
+  for (const [name, serverConfig] of objectEntries(servers)) {
+    if (!serverConfig || typeof serverConfig !== "object") continue;
+    const cfgBytes = JSON.stringify(serverConfig).length;
+    items.push({
+      category: "mcp",
+      scopeId: scope.id,
+      name,
+      fileName: "config.toml",
+      description: mcpDescription(serverConfig),
+      subType: "mcp",
+      size: formatSize(cfgBytes),
+      sizeBytes: cfgBytes,
+      ...timestampFields(parsed.stat),
+      path: parsed.path,
+      mcpConfig: serverConfig,
+    });
+  }
+
+  return items;
+}
+
+function profileDescription(profile) {
+  const parts = [
+    profile?.model ? `model: ${profile.model}` : "",
+    profile?.approval_policy ? `approval: ${profile.approval_policy}` : "",
+    profile?.sandbox_mode ? `sandbox: ${profile.sandbox_mode}` : "",
+  ].filter(Boolean);
+  return parts.join(", ") || "Codex profile";
+}
+
+async function scanProfiles(scope, ctx) {
+  const parsed = await readCodexConfig(ctx);
+  const profiles = parsed.config?.profiles || {};
+  const items = [];
+
+  for (const [name, profileConfig] of objectEntries(profiles)) {
+    if (!profileConfig || typeof profileConfig !== "object") continue;
+    const cfgBytes = JSON.stringify(profileConfig).length;
+    items.push({
+      category: "profile",
+      scopeId: scope.id,
+      name,
+      fileName: "config.toml",
+      description: profileDescription(profileConfig),
+      subType: "profile",
+      size: formatSize(cfgBytes),
+      sizeBytes: cfgBytes,
+      ...timestampFields(parsed.stat),
+      path: parsed.path,
+      value: profileConfig,
+      valueType: "toml-table",
+    });
+  }
+
+  return items;
+}
+
+async function scanRules(scope, ctx) {
+  const dir = join(codexDir(ctx), "rules");
+  const items = [];
+  if (!(await exists(dir))) return items;
+
+  let entries;
+  try { entries = await readdir(dir, { withFileTypes: true }); } catch { return items; }
+
+  for (const entry of entries) {
+    if (!entry.isFile() || entry.name.startsWith(".")) continue;
+    const path = join(dir, entry.name);
+    const stat = await safeStat(path);
+    const content = await safeReadFile(path);
+    const ext = extname(entry.name).replace(/^\./, "") || "rule";
+    items.push({
+      category: "rule",
+      scopeId: scope.id,
+      name: entry.name,
+      fileName: entry.name,
+      description: markdownDescription(content) || "Codex rule",
+      subType: ext,
+      ...statFields(stat),
+      path,
+    });
+  }
+
+  return items;
+}
+
+async function findPluginManifests(root, current = root, depth = 0) {
+  const manifests = [];
+  if (depth > 6 || !(await exists(current))) return manifests;
+
+  const manifestPath = join(current, ".codex-plugin", "plugin.json");
+  if (await exists(manifestPath)) {
+    manifests.push({ dir: current, manifestPath });
+    return manifests;
+  }
+
+  let entries;
+  try { entries = await readdir(current, { withFileTypes: true }); } catch { return manifests; }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+    if (["node_modules", ".git"].includes(entry.name)) continue;
+    manifests.push(...await findPluginManifests(root, join(current, entry.name), depth + 1));
+  }
+
+  return manifests;
+}
+
+async function scanPlugins(scope, ctx) {
+  const root = join(codexDir(ctx), "plugins");
+  const items = [];
+  const manifests = await findPluginManifests(root);
+
+  for (const { dir, manifestPath } of manifests) {
+    const manifest = await readJson(manifestPath) || {};
+    const summary = await directorySummary(dir);
+    const rel = relative(root, dir);
+    const name = manifest.name || manifest.id || basename(dir);
+    items.push({
+      category: "plugin",
+      scopeId: scope.id,
+      name,
+      fileName: rel,
+      description: manifest.description || manifest.displayName || "Codex plugin",
+      subType: "plugin",
+      ...summary,
+      path: dir,
+      openPath: manifestPath,
+      value: manifest,
+      valueType: "json",
+    });
+  }
+
+  return items;
+}
+
+const unsupportedOperations = {
+  getValidDestinations() {
+    return [];
+  },
+  async moveItem() {
+    throw new Error("Codex adapter does not support moving items yet");
+  },
+  async deleteItem() {
+    throw new Error("Codex adapter does not support deleting items yet");
+  },
+};
+
+const noEffectiveModel = {
+  rules: [],
+  includeGlobalCategories: [],
+  shadowByName: false,
+  conflictByName: false,
+  ancestorCategories: [],
+};
+
+/**
+ * @type {import("../interface.mjs").HarnessAdapter}
+ */
+export const codexAdapter = {
+  id: "codex",
+  displayName: "Codex CLI",
+  shortName: "Codex",
+  icon: "◈",
+  executable: "codex",
+  categories,
+  scopeTypes,
+  capabilities,
+  getPaths(ctx) {
+    const rootDir = codexDir(ctx);
+    return {
+      rootDir,
+      backupDir: join(ctx.home, ".codex-backups"),
+      safeRoots: [ctx.home, rootDir],
+    };
+  },
+  discoverScopes,
+  scanners: {
+    config: scanConfig,
+    memory: scanMemories,
+    skill: scanSkills,
+    mcp: scanMcpServers,
+    profile: scanProfiles,
+    rule: scanRules,
+    plugin: scanPlugins,
+  },
+  afterScan() {
+    return { effective: noEffectiveModel };
+  },
+  effective: noEffectiveModel,
+  operations: unsupportedOperations,
+};
+
+export const adapter = codexAdapter;
+export default codexAdapter;
