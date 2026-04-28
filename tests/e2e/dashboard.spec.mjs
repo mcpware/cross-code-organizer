@@ -1,5 +1,5 @@
 /**
- * E2E test suite for Claude Code Organizer.
+ * E2E test suite for Cross-Code Organizer (CCO).
  *
  * Philosophy (from gstack QA methodology):
  *   "100% test coverage is the key to great vibe coding.
@@ -273,7 +273,7 @@ async function createTestEnv() {
   // ── Start server ──
   let actualPort = port;
   const server = await new Promise((resolve, reject) => {
-    const proc = spawn(NODE_BIN, [join(PROJECT_ROOT, 'bin', 'cli.mjs'), '--port', String(port)], {
+    const proc = spawn(NODE_BIN, [join(PROJECT_ROOT, 'bin', 'cli.mjs'), '--port', String(port), '--no-open'], {
       env: { ...process.env, HOME: tmpDir },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -3068,7 +3068,7 @@ test.describe('Path Resolution', () => {
     // Start server using cli.mjs (same as createTestEnv)
     let actualPort = port;
     const srv = await new Promise((resolve, reject) => {
-      const proc = spawn(NODE_BIN, [join(PROJECT_ROOT, 'bin', 'cli.mjs'), '--port', String(port)], {
+      const proc = spawn(NODE_BIN, [join(PROJECT_ROOT, 'bin', 'cli.mjs'), '--port', String(port), '--no-open'], {
         env: { ...process.env, HOME: tmpDir },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
@@ -3136,7 +3136,7 @@ test.describe('Path Resolution', () => {
 
     let actualPort = port;
     const srv = await new Promise((resolve, reject) => {
-      const proc = spawn(NODE_BIN, [join(PROJECT_ROOT, 'bin', 'cli.mjs'), '--port', String(port)], {
+      const proc = spawn(NODE_BIN, [join(PROJECT_ROOT, 'bin', 'cli.mjs'), '--port', String(port), '--no-open'], {
         env: { ...process.env, HOME: tmpDir },
         stdio: ['ignore', 'pipe', 'pipe'],
       });

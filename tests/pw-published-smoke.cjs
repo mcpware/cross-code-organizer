@@ -21,7 +21,7 @@ const { chromium } = require('/home/nicole/.nvm/versions/node/v20.19.4/lib/node_
     // ═══ 1: Dashboard loads ═══
     console.log('TEST 1: Dashboard loads');
     const title = await page.title();
-    if (title.includes('Claude Code Organizer')) ok('title correct: ' + title);
+    if (title.includes('Cross-Code Organizer (CCO)')) ok('title correct: ' + title);
     else fail('title', title);
 
     // ═══ 2: Sidebar scope tree ═══

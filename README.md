@@ -1,21 +1,21 @@
-# Claude Code Organizer
+# Cross-Code Organizer (CCO)
 
 > **AI agents: read [AI_INDEX.md](AI_INDEX.md) first.** It is the navigation manifest for this codebase — where to find every module, how they connect, and where to look before making any claim about the code.
 
-[![npm version](https://img.shields.io/npm/v/@mcpware/claude-code-organizer)](https://www.npmjs.com/package/@mcpware/claude-code-organizer)
-[![npm downloads](https://img.shields.io/npm/dt/@mcpware/claude-code-organizer?label=downloads)](https://www.npmjs.com/package/@mcpware/claude-code-organizer)
-[![GitHub stars](https://img.shields.io/github/stars/mcpware/claude-code-organizer)](https://github.com/mcpware/claude-code-organizer/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/mcpware/claude-code-organizer)](https://github.com/mcpware/claude-code-organizer/network/members)
+[![npm version](https://img.shields.io/npm/v/@mcpware/cross-code-organizer)](https://www.npmjs.com/package/@mcpware/cross-code-organizer)
+[![npm downloads](https://img.shields.io/npm/dt/@mcpware/cross-code-organizer?label=downloads)](https://www.npmjs.com/package/@mcpware/cross-code-organizer)
+[![GitHub stars](https://img.shields.io/github/stars/mcpware/cross-code-organizer)](https://github.com/mcpware/cross-code-organizer/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/mcpware/cross-code-organizer)](https://github.com/mcpware/cross-code-organizer/network/members)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org)
-[![Tests](https://img.shields.io/badge/tests-297%20passing-brightgreen)](https://github.com/mcpware/claude-code-organizer)
-[![Zero Telemetry](https://img.shields.io/badge/telemetry-zero-blue)](https://github.com/mcpware/claude-code-organizer)
-[![MCP Security](https://img.shields.io/badge/MCP-Security%20Scanner-red)](https://github.com/mcpware/claude-code-organizer)
+[![Tests](https://img.shields.io/badge/tests-297%20passing-brightgreen)](https://github.com/mcpware/cross-code-organizer)
+[![Zero Telemetry](https://img.shields.io/badge/telemetry-zero-blue)](https://github.com/mcpware/cross-code-organizer)
+[![MCP Security](https://img.shields.io/badge/MCP-Security%20Scanner-red)](https://github.com/mcpware/cross-code-organizer)
 [![Awesome MCP](https://img.shields.io/badge/Awesome-MCP%20Servers-fc60a8?logo=awesomelists&logoColor=white)](https://github.com/punkpeye/awesome-mcp-servers)
-[![Verified Against CC Source](https://img.shields.io/badge/Verified-Claude%20Code%20Source-blueviolet)](https://github.com/mcpware/claude-code-organizer#verified-against-claude-code-source)
+[![Verified Against CC Source](https://img.shields.io/badge/Verified-Claude%20Code%20Source-blueviolet)](https://github.com/mcpware/cross-code-organizer#verified-against-claude-code-source)
 English | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [廣東話](README.zh-HK.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Español](README.es.md) | [Bahasa Indonesia](README.id.md) | [Italiano](README.it.md) | [Português](README.pt-BR.md) | [Türkçe](README.tr.md) | [Tiếng Việt](README.vi.md) | [ไทย](README.th.md)
 
-**Claude Code Organizer (CCO)** is a free, open-source dashboard that lets you manage all Claude Code configuration — memories, skills, MCP servers, settings, agents, rules, and hooks — across global and project scopes. It includes a security scanner for MCP tool poisoning and prompt injection, a per-item context token budget tracker, per-project MCP enable/disable controls, and bulk cleanup for duplicate configs. All without leaving the window.
+**Cross-Code Organizer (CCO)** is a free, open-source dashboard that lets you manage all Claude Code configuration — memories, skills, MCP servers, settings, agents, rules, and hooks — across global and project scopes. It includes a security scanner for MCP tool poisoning and prompt injection, a per-item context token budget tracker, per-project MCP enable/disable controls, and bulk cleanup for duplicate configs. All without leaving the window.
 
 > **v0.18.0** — Backup Center: one click backs up every memory, skill, MCP config, rule, plan, agent, and session to a private GitHub repo. Auto-runs every 4 hours with the native scheduler on your platform. See git history. Never lose your Claude setup again.
 
@@ -23,7 +23,7 @@ English | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [�
 
 > **Privacy:** CCO reads Claude Code config files on your machine (global and project-level). It does not send usage telemetry. It does check the npm registry for version updates unless network access is blocked.
 
-![Claude Code Organizer Demo](docs/demo.gif)
+![Cross-Code Organizer (CCO) Demo](docs/demo.gif)
 
 <sub>324 tests (124 unit + 200 E2E) | Zero dependencies | Demo recorded by AI using [Pagecast](https://github.com/mcpware/pagecast)</sub>
 
@@ -56,10 +56,10 @@ Other tools solve these one at a time. **CCO solves them in one loop:**
 **Get started — paste this into Claude Code:**
 
 ```
-Run npx @mcpware/claude-code-organizer and tell me the URL when it's ready.
+Run npx @mcpware/cross-code-organizer and tell me the URL when it's ready.
 ```
 
-Or run directly: `npx @mcpware/claude-code-organizer`
+Or run directly: `npx @mcpware/cross-code-organizer`
 
 > First run auto-installs a `/cco` skill — after that, just type `/cco` in any Claude Code session to reopen.
 
@@ -162,7 +162,7 @@ The original session is backed up before anything changes. An index file is gene
 **From CLI:**
 
 ```bash
-npx @mcpware/claude-code-organizer --distill <session.jsonl>
+npx @mcpware/cross-code-organizer --distill <session.jsonl>
 ```
 
 **Typical results:** 70MB session → 7MB distilled. 90% reduction, zero conversation loss.
@@ -241,7 +241,7 @@ Automatic Backup Center scheduling currently uses `systemd` on Linux/WSL and `la
 | **Cost Tracker** | 💡 Exploring | Track token usage and cost per session, per project |
 | **Relationship Graph** | 💡 Exploring | Visual dependency graph showing how skills, hooks, and MCP servers connect |
 
-Have a feature idea? [Open an issue](https://github.com/mcpware/claude-code-organizer/issues).
+Have a feature idea? [Open an issue](https://github.com/mcpware/cross-code-organizer/issues).
 
 ## Community
 
@@ -251,7 +251,7 @@ Have a feature idea? [Open an issue](https://github.com/mcpware/claude-code-orga
 
 ### How do I see what Claude Code loads into context?
 
-Run `npx @mcpware/claude-code-organizer` and click **Show Effective** on any category. CCO scans all config files across global and project scopes and shows exactly what Claude pre-loads — memories, MCP tool schemas, rules, skills, and settings — with per-item token counts.
+Run `npx @mcpware/cross-code-organizer` and click **Show Effective** on any category. CCO scans all config files across global and project scopes and shows exactly what Claude pre-loads — memories, MCP tool schemas, rules, skills, and settings — with per-item token counts.
 
 ### How do I find and delete duplicate memories in Claude Code?
 
@@ -298,7 +298,7 @@ MIT
 
 [ithiria894](https://github.com/ithiria894) — Building tools for the Claude Code ecosystem.
 
-[![claude-code-organizer MCP server](https://glama.ai/mcp/servers/mcpware/claude-code-organizer/badges/card.svg)](https://glama.ai/mcp/servers/mcpware/claude-code-organizer)
+[![cross-code-organizer MCP server](https://glama.ai/mcp/servers/mcpware/cross-code-organizer/badges/card.svg)](https://glama.ai/mcp/servers/mcpware/cross-code-organizer)
 
 ## Updates
 

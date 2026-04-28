@@ -1,27 +1,35 @@
 /**
- * server.mjs — HTTP server for Claude Code Organizer.
+ * server.mjs — HTTP server for Cross-Code Organizer (CCO).
  * Routes only. All logic is in scanner.mjs and mover.mjs.
  * All UI is in src/ui/ (html, css, js).
  */
 
 import { createServer } from "node:http";
 import { readFile, stat, open } from "node:fs/promises";
-import { join, extname, resolve, dirname, sep, isAbsolute } from "node:path";
+import { join, extname, resolve, sep, isAbsolute } from "node:path";
 import { homedir } from "node:os";
 import { createRequire } from "node:module";
 import https from "node:https";
-import { scan, scanMcpPolicy, checkMcpPolicy, getDisabledMcpServers, setDisabledMcpServers } from "./scanner.mjs";
+import {
+  scan,
+  scanMcpPolicy,
+  checkMcpPolicy,
+  getDisabledMcpServers,
+  setDisabledMcpServers,
+} from "./scanner.mjs";
 import { moveItem, deleteItem, getValidDestinations } from "./mover.mjs";
-import { countTokens, getMethod } from "./tokenizer.mjs";
 import { introspectServers } from "./mcp-introspector.mjs";
 import { runSecurityScan, checkClaudeAvailable, llmJudge, detectMcpDuplicates } from "./security-scanner.mjs";
+import { computeClaudeContextBudget } from "./harness/adapters/claude-context-budget.mjs";
+import { getAdapter, getDefaultAdapterId, listAdapters } from "./harness/registry.mjs";
+import { scanHarness as runHarnessScan } from "./harness/scanner-framework.mjs";
 
 // ── Update check ─────────────────────────────────────────────────────
 async function checkForUpdate() {
   const require = createRequire(import.meta.url);
   const { version: local } = require("../package.json");
   const data = await new Promise((resolve, reject) => {
-    const req = https.get("https://registry.npmjs.org/@mcpware/claude-code-organizer/latest", { timeout: 3000 }, (res) => {
+    const req = https.get("https://registry.npmjs.org/@mcpware/cross-code-organizer/latest", { timeout: 3000 }, (res) => {
       let body = "";
       res.on("data", (c) => (body += c));
       res.on("end", () => resolve(body));
@@ -31,7 +39,7 @@ async function checkForUpdate() {
   });
   const { version: latest } = JSON.parse(data);
   if (latest && latest !== local) {
-    console.log(`\uD83D\uDCE6 Update available: ${local} \u2192 ${latest}  Run: npm update -g @mcpware/claude-code-organizer\n`);
+    console.log(`\uD83D\uDCE6 Update available: ${local} \u2192 ${latest}  Run: npm update -g @mcpware/cross-code-organizer\n`);
   }
 }
 
@@ -40,7 +48,7 @@ async function checkForUpdate() {
 const HOME = homedir();
 const CLAUDE_DIR = join(HOME, ".claude");
 const BACKUP_DIR = join(HOME, ".claude-backups");
-const BACKUP_CONFIG = join(BACKUP_DIR, "config.json");
+const BACKUP_EXCLUDED_CATEGORIES = new Set(["setting", "hook", "session", "history", "shell", "runtime"]);
 
 /**
  * Validate that a file path is within allowed directories.
@@ -66,11 +74,79 @@ const MIME = {
 };
 
 // ── Cached scan data (refresh on each request to /api/scan) ──────────
-let cachedData = null;
+const cachedDataByHarness = new Map();
 
-async function freshScan() {
-  cachedData = await scan();
-  return cachedData;
+function requestHarnessId(url) {
+  return url.searchParams.get("harness") || getDefaultAdapterId();
+}
+
+async function scanForCache(harnessId) {
+  if (harnessId === getDefaultAdapterId()) return scan();
+  const adapter = await getAdapter(harnessId);
+  return runHarnessScan(adapter);
+}
+
+async function refreshScanCache(harnessId = getDefaultAdapterId()) {
+  const data = await scanForCache(harnessId);
+  cachedDataByHarness.set(harnessId, data);
+  return data;
+}
+
+function getCachedData(harnessId = getDefaultAdapterId()) {
+  return cachedDataByHarness.get(harnessId) || null;
+}
+
+function invalidateCachedData(harnessId = getDefaultAdapterId()) {
+  cachedDataByHarness.delete(harnessId);
+}
+
+async function getHarnessOperations(harnessId = getDefaultAdapterId()) {
+  const adapter = await getAdapter(harnessId);
+  return adapter.operations || { moveItem, deleteItem, getValidDestinations };
+}
+
+async function getHarnessPathInfo(harnessId = getDefaultAdapterId()) {
+  const adapter = await getAdapter(harnessId);
+  const paths = adapter.getPaths?.({
+    home: HOME,
+    cwd: process.cwd(),
+    platform: process.platform,
+    env: process.env,
+  }) || {};
+  const rootDir = paths.rootDir || CLAUDE_DIR;
+  const backupDir = paths.backupDir || BACKUP_DIR;
+  return {
+    rootDir,
+    backupDir,
+    backupConfig: join(backupDir, "config.json"),
+    securityDir: join(rootDir, ".cco-security"),
+  };
+}
+
+function exportableBackupItems(items) {
+  return items.filter((item) => !BACKUP_EXCLUDED_CATEGORIES.has(item.category));
+}
+
+async function ensureBackupRepo(backupDir) {
+  const { mkdir: mk, writeFile: wf } = await import("node:fs/promises");
+  const { execFile } = await import("node:child_process");
+  const { promisify: prom } = await import("node:util");
+  const { isGitRepo, initRepo } = await import("./backup-git.mjs");
+  const exec = prom(execFile);
+
+  await mk(backupDir, { recursive: true });
+  const created = !(await isGitRepo(backupDir));
+  if (created) {
+    await initRepo(backupDir);
+    await wf(join(backupDir, ".gitignore"), "backup-*/\n*.log\nconfig.json\n");
+  }
+
+  try { await exec("git", ["config", "user.email"], { cwd: backupDir }); }
+  catch { await exec("git", ["config", "user.email", "cco-backup@localhost"], { cwd: backupDir }); }
+  try { await exec("git", ["config", "user.name"], { cwd: backupDir }); }
+  catch { await exec("git", ["config", "user.name", "CCO Backup"], { cwd: backupDir }); }
+
+  return created;
 }
 
 // ── Request helpers ──────────────────────────────────────────────────
@@ -102,13 +178,106 @@ async function serveFile(res, filePath) {
   }
 }
 
+function contentText(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => {
+      if (typeof part === "string") return part;
+      if (typeof part?.text === "string") return part.text;
+      if (typeof part?.input_text === "string") return part.input_text;
+      if (typeof part?.output_text === "string") return part.output_text;
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function toolUsesFromContent(content) {
+  if (!Array.isArray(content)) return [];
+  return content
+    .filter((part) => part?.type === "tool_use" || part?.type === "function_call")
+    .map((part) => ({ name: part.name, id: part.id || part.call_id }))
+    .filter((part) => part.name || part.id);
+}
+
+function sessionMessageFromEntry(entry) {
+  if (entry.message?.role && entry.message?.content) {
+    return {
+      role: entry.message.role,
+      text: contentText(entry.message.content),
+      toolUses: toolUsesFromContent(entry.message.content),
+    };
+  }
+
+  const payload = entry.payload;
+  if (entry.type === "response_item" && payload?.type === "message" && payload.role) {
+    return {
+      role: payload.role,
+      text: contentText(payload.content),
+      toolUses: toolUsesFromContent(payload.content),
+    };
+  }
+
+  return null;
+}
+
+function addModelUsage(models, model, usage) {
+  if (!usage) return;
+  const modelName = model || "unknown";
+  if (!models[modelName]) {
+    models[modelName] = { inputTokens: 0, outputTokens: 0, cacheRead: 0, cacheWrite: 0, webSearches: 0, turns: 0 };
+  }
+  const target = models[modelName];
+  target.inputTokens += usage.inputTokens || 0;
+  target.outputTokens += usage.outputTokens || 0;
+  target.cacheRead += usage.cacheRead || 0;
+  target.cacheWrite += usage.cacheWrite || 0;
+  target.webSearches += usage.webSearches || 0;
+  target.turns += 1;
+}
+
 // ── Routes ───────────────────────────────────────────────────────────
 
 async function handleRequest(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const path = url.pathname;
+  const harnessId = requestHarnessId(url);
+  let cachedData = getCachedData(harnessId);
+  async function freshScan() {
+    cachedData = await refreshScanCache(harnessId);
+    return cachedData;
+  }
 
   // ── API routes ──
+
+  // GET /api/harnesses — list registered harness adapters and metadata
+  if (path === "/api/harnesses" && req.method === "GET") {
+    const summaries = await listAdapters();
+    const harnesses = await Promise.all(summaries.map(async ({ id }) => {
+      const adapter = await getAdapter(id);
+      return {
+        id: adapter.id,
+        displayName: adapter.displayName,
+        shortName: adapter.shortName,
+        icon: adapter.icon,
+        iconSvg: adapter.iconSvg,
+        executable: adapter.executable,
+        categories: adapter.categories,
+        scopeTypes: adapter.scopeTypes,
+        capabilities: adapter.capabilities,
+      };
+    }));
+    return json(res, { ok: true, defaultHarness: getDefaultAdapterId(), harnesses });
+  }
+
+  if (path.startsWith("/api/") && path !== "/api/version") {
+    try {
+      await getAdapter(harnessId);
+    } catch (err) {
+      return json(res, { ok: false, error: err.message }, 400);
+    }
+  }
 
   // GET /api/version — check for updates (UI calls this)
   if (path === "/api/version" && req.method === "GET") {
@@ -116,7 +285,7 @@ async function handleRequest(req, res) {
     const { version: local } = require("../package.json");
     try {
       const data = await new Promise((resolve, reject) => {
-        const req = https.get("https://registry.npmjs.org/@mcpware/claude-code-organizer/latest", { timeout: 3000 }, (res) => {
+        const req = https.get("https://registry.npmjs.org/@mcpware/cross-code-organizer/latest", { timeout: 3000 }, (res) => {
           let body = "";
           res.on("data", (c) => (body += c));
           res.on("end", () => resolve(body));
@@ -172,48 +341,6 @@ async function handleRequest(req, res) {
     });
   }
 
-  // ── Context Budget helpers ──────────────────────────────────────────
-
-  /**
-   * Expand @import references in CLAUDE.md files.
-   * Claude Code expands these at session start — imported content is
-   * verbatim-merged into the parent. Max depth: 5 hops.
-   */
-  async function expandImports(text, basePath, depth = 0) {
-    if (depth >= 5) return text;
-    const lines = text.split("\n");
-    const expanded = [];
-    for (const line of lines) {
-      const match = line.match(/^@(.+)$/);
-      if (match) {
-        let importPath = match[1].trim();
-        // Support ~ expansion
-        if (importPath.startsWith("~")) {
-          importPath = importPath.replace(/^~/, HOME);
-        }
-        importPath = resolve(basePath, importPath);
-        try {
-          let imported = await readFile(importPath, "utf-8");
-          imported = await expandImports(imported, dirname(importPath), depth + 1);
-          expanded.push(imported);
-        } catch {
-          expanded.push(line); // keep original line if import fails
-        }
-      } else {
-        expanded.push(line);
-      }
-    }
-    return expanded.join("\n");
-  }
-
-  /**
-   * Strip block-level HTML comments from CLAUDE.md content.
-   * Official docs: "Block-level HTML comments are stripped before injection."
-   */
-  function stripHtmlComments(text) {
-    return text.replace(/<!--[\s\S]*?-->/g, "");
-  }
-
   // GET /api/context-budget?scope=<id> — token budget breakdown for a scope
   if (path === "/api/context-budget" && req.method === "GET") {
     const scopeId = url.searchParams.get("scope");
@@ -221,288 +348,9 @@ async function handleRequest(req, res) {
 
     if (!cachedData) await freshScan();
 
-    const scope = cachedData.scopes.find(s => s.id === scopeId);
-    if (!scope) return json(res, { ok: false, error: "Scope not found" }, 400);
-
-    // Collect parent chain (for inherited items)
-    const parentIds = [];
-    let cur = scope;
-    while (cur.parentId) {
-      parentIds.push(cur.parentId);
-      cur = cachedData.scopes.find(s => s.id === cur.parentId);
-      if (!cur) break;
-    }
-
-    // What Claude Code loads at session start (from official docs):
-    //
-    // ALWAYS LOADED (in context every request):
-    //   - System prompt (~6.5K)
-    //   - System tools loaded part (~6K)
-    //   - CLAUDE.md files (full content, all ancestor dirs)
-    //   - .claude/rules/*.md (unconditional, no paths frontmatter)
-    //   - MEMORY.md (first 200 lines or 25KB)
-    //   - Skill descriptions (2% of context budget)
-    //   - Git status
-    //
-    // DEFERRED (reserved, loaded on-demand via ToolSearch):
-    //   - MCP tool definitions (~90% of MCP tokens when ToolSearch active)
-    //   - System tools deferred part (~10.5K)
-    //
-    // NOT IN CONTEXT:
-    //   - settings.json / settings.local.json (client config only)
-    //   - Individual memory files (on-demand via readFileState)
-    //   - Hook scripts (run externally, zero context)
-    //   - Skills with disable-model-invocation: true
-
-    // Items that are always loaded into context
-    const ALWAYS_LOADED_CATEGORIES = new Set(["skill", "rule", "command", "agent"]);
-    // Config items: CLAUDE.md is loaded, settings.json is NOT
-    const LOADED_CONFIG_NAMES = new Set(["CLAUDE.md", ".claude/CLAUDE.md", "CLAUDE.md (managed)"]);
-
-    // Tokenize items, classifying as loaded vs not
-    async function tokenizeItems(scopeIds) {
-      const items = cachedData.items.filter(
-        i => scopeIds.includes(i.scopeId) &&
-          (ALWAYS_LOADED_CATEGORIES.has(i.category) ||
-           (i.category === "config" && LOADED_CONFIG_NAMES.has(i.name)) ||
-           i.category === "mcp")
-      );
-      const loaded = [];
-      const deferred = [];
-
-      for (const item of items) {
-        let text = "";
-        try {
-          if (item.category === "mcp") {
-            // MCP config JSON — the config itself is tiny, tool schemas are deferred
-            text = JSON.stringify(item.mcpConfig || {}, null, 2);
-          } else if (item.category === "skill") {
-            // Claude Code injects skills in TWO places:
-            // 1. Skill tool description: <available_skills>"name": description</available_skills>
-            // 2. system-reminder: "- name: description" (re-injected on tool calls)
-            //
-            // We count the <available_skills> format since that's the primary injection.
-            // The Skill tool boilerplate (~430 tokens) is added as a constant below.
-            //
-            // Read SKILL.md and extract the frontmatter description field.
-            const skillMdPath = join(item.path, "SKILL.md");
-            try {
-              const skillContent = await readFile(skillMdPath, "utf-8");
-              const fmMatch = skillContent.match(/^---\n([\s\S]*?)\n---/);
-              if (fmMatch) {
-                const descMatch = fmMatch[1].match(/description:\s*(.+(?:\n(?![\w-]+:).+)*)/);
-                // Match actual injection format: "skill-name": Description text
-                text = `"${item.name}": ${descMatch ? descMatch[1].trim() : item.description || ""}`;
-              } else {
-                text = `"${item.name}": ${item.description || ""}`;
-              }
-            } catch {
-              text = `"${item.name}": ${item.description || ""}`;
-            }
-          } else if (item.path) {
-            // CLAUDE.md, rules, commands, agents: read file content
-            text = await readFile(item.path, "utf-8");
-
-            // For CLAUDE.md files: expand @imports and strip HTML comments
-            // (Claude Code does both before injecting into context)
-            if (item.category === "config" && LOADED_CONFIG_NAMES.has(item.name)) {
-              text = await expandImports(text, dirname(item.path));
-              text = stripHtmlComments(text);
-            }
-
-            // For rules: strip HTML comments too
-            if (item.category === "rule") {
-              text = stripHtmlComments(text);
-            }
-          }
-        } catch {}
-
-        const { tokens, confidence } = await countTokens(text);
-        const scopeObj = cachedData.scopes.find(s => s.id === item.scopeId);
-        const entry = {
-          category: item.category,
-          subType: item.subType,
-          name: item.name,
-          path: item.path,
-          tokens,
-          confidence,
-          sizeBytes: item.sizeBytes || 0,
-          scopeId: item.scopeId,
-          scopeName: scopeObj?.name || item.scopeId,
-        };
-
-        if (item.category === "mcp") {
-          // MCP tool schemas are deferred when ToolSearch is active (>10% threshold)
-          // We put MCP in deferred since most setups trigger ToolSearch
-          deferred.push(entry);
-        } else if (item.category === "rule" && text) {
-          // Rules with `paths:` frontmatter are on-demand (loaded only when
-          // Claude reads files matching the pattern). Rules without `paths:`
-          // are loaded at session start alongside CLAUDE.md.
-          const fm = text.match(/^---\n([\s\S]*?)\n---/)?.[1] || "";
-          if (/^paths:/m.test(fm)) {
-            deferred.push(entry);
-          } else {
-            loaded.push(entry);
-          }
-        } else {
-          loaded.push(entry);
-        }
-      }
-
-      return { loaded, deferred };
-    }
-
-    const [currentResult, inheritedResult, method] = await Promise.all([
-      tokenizeItems([scopeId]),
-      tokenizeItems(parentIds),
-      getMethod(),
-    ]);
-
-    // Add MEMORY.md files — always loaded (first 200 lines / 25KB)
-    async function addMemoryIndexFiles(scopeIds, targetArray) {
-      for (const sid of scopeIds) {
-        const s = cachedData.scopes.find(sc => sc.id === sid);
-        if (!s) continue;
-        let memPath = null;
-        if (s.id === "global") {
-          memPath = join(CLAUDE_DIR, "memory", "MEMORY.md");
-        } else if (s.claudeProjectDir) {
-          memPath = join(s.claudeProjectDir, "memory", "MEMORY.md");
-        }
-        if (!memPath) continue;
-        try {
-          let text = await readFile(memPath, "utf-8");
-          // Claude loads first 200 lines or 25KB of MEMORY.md
-          const lines = text.split("\n").slice(0, 200);
-          text = lines.join("\n").slice(0, 25000);
-          const { tokens, confidence } = await countTokens(text);
-          if (tokens > 0) {
-            targetArray.push({
-              category: "memory",
-              subType: "index",
-              name: "MEMORY.md",
-              path: memPath,
-              tokens,
-              confidence,
-              sizeBytes: Buffer.byteLength(text, "utf-8"),
-              scopeId: sid,
-              scopeName: s.name,
-            });
-          }
-        } catch {}
-      }
-    }
-
-    await Promise.all([
-      addMemoryIndexFiles([scopeId], currentResult.loaded),
-      addMemoryIndexFiles(parentIds, inheritedResult.loaded),
-    ]);
-
-    // System overhead — rough estimates that change every Claude Code release.
-    // These numbers are intentionally rounded. Don't over-tune them.
-    // Run `/context` in Claude Code to see YOUR actual numbers.
-    //
-    // As of v2.1.84 (March 2026), real measurements range:
-    //   System loaded: 14.8K (Sonnet 200K) to 20.2K (Opus 200K)
-    //   System deferred: ~7K
-    //   Skill boilerplate: ~400 when skills exist
-    //
-    // We use ~18K as a middle-ground estimate.
-    const SYSTEM_LOADED = 18000;
-    const SYSTEM_DEFERRED = 7000;
-    const hasSkills = [...currentResult.loaded, ...inheritedResult.loaded]
-      .some(i => i.category === "skill");
-    const SKILL_BOILERPLATE = hasSkills ? 400 : 0;
-
-    // MCP tool schemas — deferred when ToolSearch active
-    // Average ~3100 tokens per UNIQUE server based on /context measurements.
-    // Real-world range: 385 (SQLite) to 17,000 (Jira). 3.1K is the median.
-    // Note: /context has a known 3x inflation bug for MCP tools (counts hidden
-    // tool-use system prompt per-tool instead of once). Our offline estimate
-    // may actually be MORE accurate than /context for MCP tools.
-    // Claude Code deduplicates by name (priority: local > project > user),
-    // so we count unique names, not total entries.
-    // Filter out disabled servers — Claude Code doesn't load them.
-    const allMcpItems = cachedData.items.filter(
-      i => i.category === "mcp" &&
-        (i.scopeId === scopeId || parentIds.includes(i.scopeId)) &&
-        !i.mcpConfig?.disabled
-    );
-    const uniqueMcpNames = new Set(allMcpItems.map(i => i.name));
-    const mcpServerCount = allMcpItems.length; // total entries (for display)
-    const mcpUniqueCount = uniqueMcpNames.size; // unique names (for estimation)
-    const mcpToolSchemaEstimate = mcpUniqueCount * 3100;
-
-    // CLAUDE.md injection wrapper (~100 tokens for <system-reminder> tags + headers).
-    // Small enough that precision doesn't matter.
-    const CLAUDEMD_WRAPPER = 100;
-
-    // Autocompact buffer — Claude Code reserves ~13K for compaction (verified from ccsrc autoCompact.ts).
-    // This changes occasionally. Don't over-tune it.
-    const AUTOCOMPACT_BUFFER = 13000;
-
-    // Warning threshold — Claude Code starts warning user when context is getting full.
-    // ccsrc: WARNING_THRESHOLD_BUFFER_TOKENS
-    const WARNING_THRESHOLD_BUFFER = 20000;
-
-    // Max output tokens — reserved for model response.
-    // ccsrc: MAX_OUTPUT_TOKENS_DEFAULT
-    const MAX_OUTPUT_TOKENS = 32000;
-
-    // Totals
-    const currentLoaded = currentResult.loaded;
-    const currentDeferred = currentResult.deferred;
-    const inheritedLoaded = inheritedResult.loaded;
-    const inheritedDeferred = inheritedResult.deferred;
-
-    const loadedTotal = currentLoaded.reduce((s, i) => s + i.tokens, 0)
-      + inheritedLoaded.reduce((s, i) => s + i.tokens, 0)
-      + SYSTEM_LOADED
-      + SKILL_BOILERPLATE
-      + CLAUDEMD_WRAPPER;
-    const deferredTotal = currentDeferred.reduce((s, i) => s + i.tokens, 0)
-      + inheritedDeferred.reduce((s, i) => s + i.tokens, 0)
-      + SYSTEM_DEFERRED
-      + mcpToolSchemaEstimate;
-
-    const total = loadedTotal + deferredTotal;
     const contextLimit = parseInt(url.searchParams.get("limit")) || 200000;
-
-    return json(res, {
-      ok: true,
-      scopeId,
-      scopeName: scope.name,
-      alwaysLoaded: {
-        currentScope: { items: currentLoaded, total: currentLoaded.reduce((s, i) => s + i.tokens, 0) },
-        inherited: { items: inheritedLoaded, total: inheritedLoaded.reduce((s, i) => s + i.tokens, 0) },
-        system: SYSTEM_LOADED,
-        skillBoilerplate: SKILL_BOILERPLATE,
-        total: loadedTotal,
-      },
-      deferred: {
-        currentScope: { items: currentDeferred, total: currentDeferred.reduce((s, i) => s + i.tokens, 0) },
-        inherited: { items: inheritedDeferred, total: inheritedDeferred.reduce((s, i) => s + i.tokens, 0) },
-        systemTools: SYSTEM_DEFERRED,
-        mcpToolSchemas: mcpToolSchemaEstimate,
-        mcpServerCount,
-        mcpUniqueCount,
-        total: deferredTotal,
-      },
-      total,
-      contextLimit,
-      autocompactBuffer: AUTOCOMPACT_BUFFER,
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
-      warningZone: contextLimit - WARNING_THRESHOLD_BUFFER - MAX_OUTPUT_TOKENS,
-      autocompactAt: contextLimit - AUTOCOMPACT_BUFFER - MAX_OUTPUT_TOKENS,
-      percentUsed: Math.round((loadedTotal / contextLimit) * 1000) / 10,
-      percentWithDeferred: Math.round((total / contextLimit) * 1000) / 10,
-      method,
-      // Keep old fields for backward compat with existing UI
-      currentScope: { items: [...currentLoaded, ...currentDeferred], total: currentLoaded.reduce((s, i) => s + i.tokens, 0) + currentDeferred.reduce((s, i) => s + i.tokens, 0) },
-      inherited: { items: [...inheritedLoaded, ...inheritedDeferred], total: inheritedLoaded.reduce((s, i) => s + i.tokens, 0) + inheritedDeferred.reduce((s, i) => s + i.tokens, 0) },
-      systemOverhead: { base: SYSTEM_LOADED, skillBoilerplate: SKILL_BOILERPLATE, claudeMdWrapper: CLAUDEMD_WRAPPER, mcpServers: mcpServerCount, mcpUniqueServers: mcpUniqueCount, mcpEstimate: mcpToolSchemaEstimate, autocompactBuffer: AUTOCOMPACT_BUFFER, maxOutputTokens: MAX_OUTPUT_TOKENS, warningThresholdBuffer: WARNING_THRESHOLD_BUFFER, total: SYSTEM_LOADED + SYSTEM_DEFERRED + SKILL_BOILERPLATE + CLAUDEMD_WRAPPER + mcpToolSchemaEstimate, confidence: "estimated" },
-    });
+    const result = await computeClaudeContextBudget({ data: cachedData, scopeId, contextLimit, home: HOME });
+    return json(res, result, result.ok ? 200 : 400);
   }
 
   // POST /api/move — move an item to a different scope
@@ -521,7 +369,8 @@ async function handleRequest(req, res) {
     );
     if (!item) return json(res, { ok: false, error: "Item not found or locked" }, 400);
 
-    const result = await moveItem(item, toScopeId, cachedData.scopes);
+    const operations = await getHarnessOperations(harnessId);
+    const result = await operations.moveItem(item, toScopeId, cachedData.scopes);
 
     // Refresh cache after move
     if (result.ok) await freshScan();
@@ -543,7 +392,8 @@ async function handleRequest(req, res) {
     );
     if (!item) return json(res, { ok: false, error: "Item not found or locked" }, 400);
 
-    const result = await deleteItem(item, cachedData.scopes);
+    const operations = await getHarnessOperations(harnessId);
+    const result = await operations.deleteItem(item, cachedData.scopes);
 
     if (result.ok) await freshScan();
 
@@ -564,7 +414,8 @@ async function handleRequest(req, res) {
     );
     if (!item) return json(res, { ok: false, error: "Item not found" }, 400);
 
-    const destinations = getValidDestinations(item, cachedData.scopes);
+    const operations = await getHarnessOperations(harnessId);
+    const destinations = operations.getValidDestinations(item, cachedData.scopes);
     return json(res, { ok: true, destinations, currentScopeId: item.scopeId });
   }
 
@@ -644,6 +495,7 @@ async function handleRequest(req, res) {
       }
       const { writeFile: wf } = await import("node:fs/promises");
       await wf(filePath, content, "utf-8");
+      invalidateCachedData(harnessId);
       cachedData = null;
       return json(res, { ok: true });
     } catch (err) {
@@ -668,7 +520,11 @@ async function handleRequest(req, res) {
       await fh.read(headBuf, 0, headSize, 0);
       let title = null;
       for (const line of headBuf.toString("utf-8").split("\n").slice(0, 10)) {
-        try { const e = JSON.parse(line); if (e.aiTitle) { title = e.aiTitle; break; } } catch {}
+        try {
+          const e = JSON.parse(line);
+          if (e.aiTitle) { title = e.aiTitle; break; }
+          if (e.type === "session_meta" && e.payload?.cwd) title ||= e.payload.cwd;
+        } catch {}
       }
 
       // Read last 256KB for recent messages (enough for ~20 text messages)
@@ -687,26 +543,14 @@ async function handleRequest(req, res) {
         if (!line.trim()) continue;
         try {
           const entry = JSON.parse(line);
-          if (entry.message?.role && entry.message?.content) {
-            const role = entry.message.role;
-            const content = entry.message.content;
-            const textParts = [];
-            const toolUses = [];
-            if (typeof content === "string") {
-              textParts.push(content);
-            } else if (Array.isArray(content)) {
-              for (const c of content) {
-                if (c.type === "text" && c.text?.trim()) textParts.push(c.text);
-                else if (c.type === "tool_use") toolUses.push({ name: c.name, id: c.id });
-              }
-            }
-            const text = textParts.join("\n");
+          const message = sessionMessageFromEntry(entry);
+          if (message?.role) {
             totalMessages++;
-            if (text.trim()) {
+            if (message.text.trim()) {
               messages.push({
-                role,
-                text: text.length > 800 ? text.slice(0, 800) + "\n… (truncated)" : text,
-                toolUses: toolUses.length ? toolUses : undefined,
+                role: message.role,
+                text: message.text.length > 800 ? message.text.slice(0, 800) + "\n… (truncated)" : message.text,
+                toolUses: message.toolUses.length ? message.toolUses : undefined,
               });
             }
           }
@@ -734,6 +578,9 @@ async function handleRequest(req, res) {
     }
     // pricing per million tokens [input, output, cacheRead, cacheWrite, webSearch per req]
     const PRICING = {
+      "gpt-5.5":                 { i: 5,  o: 25,  cr: 0.5,  cw: 6.25, ws: 0.01 },
+      "gpt-5.4":                 { i: 3,  o: 15,  cr: 0.3,  cw: 3.75, ws: 0.01 },
+      "gpt-5.3-codex":           { i: 3,  o: 15,  cr: 0.3,  cw: 3.75, ws: 0.01 },
       "claude-opus-4-6":       { i: 5,  o: 25,  cr: 0.5,  cw: 6.25, ws: 0.01 },
       "claude-opus-4-5":       { i: 5,  o: 25,  cr: 0.5,  cw: 6.25, ws: 0.01 },
       "claude-opus-4-1":       { i: 15, o: 75,  cr: 1.5,  cw: 18.75, ws: 0.01 },
@@ -749,6 +596,7 @@ async function handleRequest(req, res) {
       const content = await readFile(filePath, "utf-8");
       const models = {};  // { modelName: { inputTokens, outputTokens, cacheRead, cacheWrite, webSearches, turns } }
       let firstTs = null, lastTs = null;
+      let currentModel = null;
 
       for (const line of content.split("\n")) {
         if (!line.trim()) continue;
@@ -759,16 +607,27 @@ async function handleRequest(req, res) {
             if (!firstTs || ts < firstTs) firstTs = ts;
             if (!lastTs || ts > lastTs) lastTs = ts;
           }
+          if (entry.type === "turn_context" && entry.payload?.model) currentModel = entry.payload.model;
+          if (entry.type === "session_meta" && !currentModel) {
+            currentModel = entry.payload?.model || entry.payload?.model_provider || null;
+          }
           if (entry.type === "assistant" && entry.message?.usage && entry.message?.model !== "<synthetic>") {
-            const model = entry.message.model || "unknown";
             const u = entry.message.usage;
-            if (!models[model]) models[model] = { inputTokens: 0, outputTokens: 0, cacheRead: 0, cacheWrite: 0, webSearches: 0, turns: 0 };
-            models[model].inputTokens += u.input_tokens || 0;
-            models[model].outputTokens += u.output_tokens || 0;
-            models[model].cacheRead += u.cache_read_input_tokens || 0;
-            models[model].cacheWrite += u.cache_creation_input_tokens || 0;
-            models[model].webSearches += (u.server_tool_use?.web_search_requests || 0);
-            models[model].turns++;
+            addModelUsage(models, entry.message.model || currentModel, {
+              inputTokens: u.input_tokens || 0,
+              outputTokens: u.output_tokens || 0,
+              cacheRead: u.cache_read_input_tokens || 0,
+              cacheWrite: u.cache_creation_input_tokens || 0,
+              webSearches: u.server_tool_use?.web_search_requests || 0,
+            });
+          }
+          if (entry.type === "event_msg" && entry.payload?.type === "token_count") {
+            const u = entry.payload.info?.last_token_usage || entry.payload.info?.total_token_usage;
+            addModelUsage(models, currentModel || "codex", {
+              inputTokens: u?.input_tokens || 0,
+              outputTokens: u?.output_tokens || 0,
+              cacheRead: u?.cached_input_tokens || 0,
+            });
           }
         } catch { /* skip malformed */ }
       }
@@ -810,7 +669,8 @@ async function handleRequest(req, res) {
     try {
       const { distillSession } = await import("./session-distiller.mjs");
       const result = await distillSession(filePath);
-      cachedData = null; // bust scan cache so new session appears
+      invalidateCachedData(harnessId); // bust scan cache so new session appears
+      cachedData = null;
       return json(res, {
         ok: true,
         distilled: result.outputPath,
@@ -852,8 +712,9 @@ async function handleRequest(req, res) {
   // POST /api/export — export all scanned items to a folder
   if (path === "/api/export" && req.method === "POST") {
     let { exportDir } = await readBody(req);
-    // Default to ~/.claude/exports/ if no path provided
-    if (!exportDir) exportDir = join(CLAUDE_DIR, "exports");
+    const { rootDir } = await getHarnessPathInfo(harnessId);
+    // Default to the selected harness config directory if no path provided.
+    if (!exportDir) exportDir = join(rootDir, "exports");
     if (!isAbsolute(exportDir)) {
       return json(res, { ok: false, error: "Invalid exportDir (must be absolute path)" }, 400);
     }
@@ -924,22 +785,24 @@ async function handleRequest(req, res) {
       const { readFile: rf } = await import("node:fs/promises");
       const { isGitRepo, hasRemote, getRemoteUrl, getLastCommit } = await import("./backup-git.mjs");
       const { isInstalled } = await import("./backup-scheduler.mjs");
+      const { backupDir, backupConfig } = await getHarnessPathInfo(harnessId);
 
       let config = {};
-      try { config = JSON.parse(await rf(BACKUP_CONFIG, "utf-8")); } catch {}
+      try { config = JSON.parse(await rf(backupConfig, "utf-8")); } catch {}
 
-      const gitRepo = await isGitRepo(BACKUP_DIR);
-      const remote = gitRepo ? await hasRemote(BACKUP_DIR) : false;
-      const remoteUrl = remote ? await getRemoteUrl(BACKUP_DIR) : null;
-      const lastCommit = gitRepo ? await getLastCommit(BACKUP_DIR) : { msg: null, date: null };
-      const schedulerInstalled = await isInstalled();
+      const gitRepo = await isGitRepo(backupDir);
+      const remote = gitRepo ? await hasRemote(backupDir) : false;
+      const remoteUrl = remote ? await getRemoteUrl(backupDir) : null;
+      const lastCommit = gitRepo ? await getLastCommit(backupDir) : { msg: null, date: null };
+      const schedulerSupported = harnessId === getDefaultAdapterId();
+      const schedulerInstalled = schedulerSupported ? await isInstalled() : false;
 
       const counts = cachedData ? { ...cachedData.counts } : {};
       const totalItems = cachedData ? cachedData.items.length : 0;
       const scopeCount = cachedData ? cachedData.scopes.length : 0;
 
       return json(res, {
-        ok: true,
+        ok: true, backupDir,
         counts, totalItems, scopeCount,
         lastRun: config.lastRun || null,
         lastCopied: config.lastCopied || 0,
@@ -950,6 +813,7 @@ async function handleRequest(req, res) {
         remoteUrl,
         lastCommitMsg: lastCommit.msg,
         lastCommitDate: lastCommit.date,
+        schedulerSupported,
         schedulerInstalled,
       });
     } catch (err) {
@@ -964,17 +828,17 @@ async function handleRequest(req, res) {
       const { basename } = await import("node:path");
       const { commitAndPush } = await import("./backup-git.mjs");
       const { readFile: rf } = await import("node:fs/promises");
+      const { backupDir, backupConfig } = await getHarnessPathInfo(harnessId);
 
       const scanData = await freshScan();
-      const latestDir = join(BACKUP_DIR, "latest");
+      await ensureBackupRepo(backupDir);
+      const latestDir = join(backupDir, "latest");
 
       try { await rm(latestDir, { recursive: true, force: true }); } catch {}
 
       let copied = 0;
       const errors = [];
-      const exportableItems = scanData.items.filter(
-        item => item.category !== "setting" && item.category !== "hook"
-      );
+      const exportableItems = exportableBackupItems(scanData.items);
 
       for (const item of exportableItems) {
         try {
@@ -999,11 +863,11 @@ async function handleRequest(req, res) {
         exportedAt: new Date().toISOString(), totalItems: exportableItems.length, copied, errors: errors.length, counts: scanData.counts,
       }, null, 2) + "\n");
 
-      const gitResult = await commitAndPush(BACKUP_DIR);
+      const gitResult = await commitAndPush(backupDir);
 
       let config = {};
-      try { config = JSON.parse(await rf(BACKUP_CONFIG, "utf-8")); } catch {}
-      await wf(BACKUP_CONFIG, JSON.stringify({ ...config, lastRun: new Date().toISOString(), lastCopied: copied, lastErrors: errors.length }, null, 2) + "\n");
+      try { config = JSON.parse(await rf(backupConfig, "utf-8")); } catch {}
+      await wf(backupConfig, JSON.stringify({ ...config, lastRun: new Date().toISOString(), lastCopied: copied, lastErrors: errors.length }, null, 2) + "\n");
 
       return json(res, { ok: true, copied, errors: errors.length, gitResult, counts: scanData.counts, totalItems: scanData.items.length, scopeCount: scanData.scopes.length });
     } catch (err) {
@@ -1015,7 +879,9 @@ async function handleRequest(req, res) {
   if (path === "/api/backup/sync" && req.method === "POST") {
     try {
       const { commitAndPush } = await import("./backup-git.mjs");
-      const result = await commitAndPush(BACKUP_DIR);
+      const { backupDir } = await getHarnessPathInfo(harnessId);
+      await ensureBackupRepo(backupDir);
+      const result = await commitAndPush(backupDir);
       return json(res, { ok: true, ...result });
     } catch (err) {
       return json(res, { ok: false, error: err.message }, 500);
@@ -1028,6 +894,11 @@ async function handleRequest(req, res) {
       const { intervalHours = 4 } = await readBody(req);
       const { readFile: rf, writeFile: wf } = await import("node:fs/promises");
       const { install, getNodeAndCliPath } = await import("./backup-scheduler.mjs");
+      const { backupConfig } = await getHarnessPathInfo(harnessId);
+
+      if (harnessId !== getDefaultAdapterId()) {
+        return json(res, { ok: false, error: "Background scheduler is currently available for Claude Code backups only." }, 400);
+      }
 
       const paths = await getNodeAndCliPath();
       if (!paths) return json(res, { ok: false, error: "Backup scheduler not initialized. Run `claude-code-backup init` first." }, 400);
@@ -1035,8 +906,8 @@ async function handleRequest(req, res) {
       await install(paths.nodePath, paths.cliPath, intervalHours);
 
       let config = {};
-      try { config = JSON.parse(await rf(BACKUP_CONFIG, "utf-8")); } catch {}
-      await wf(BACKUP_CONFIG, JSON.stringify({ ...config, interval: intervalHours }, null, 2) + "\n");
+      try { config = JSON.parse(await rf(backupConfig, "utf-8")); } catch {}
+      await wf(backupConfig, JSON.stringify({ ...config, interval: intervalHours }, null, 2) + "\n");
 
       return json(res, { ok: true, interval: intervalHours });
     } catch (err) {
@@ -1049,21 +920,17 @@ async function handleRequest(req, res) {
     try {
       const { url } = await readBody(req);
       if (!url) return json(res, { ok: false, error: "Missing url" }, 400);
-      const { mkdir: mk, writeFile: wf } = await import("node:fs/promises");
       const { execFile } = await import("node:child_process");
       const { promisify: prom } = await import("node:util");
       const exec = prom(execFile);
-      const { isGitRepo, hasRemote, addRemote, initRepo } = await import("./backup-git.mjs");
+      const { hasRemote, addRemote } = await import("./backup-git.mjs");
+      const { backupDir } = await getHarnessPathInfo(harnessId);
 
-      await mk(BACKUP_DIR, { recursive: true });
-      if (!(await isGitRepo(BACKUP_DIR))) {
-        await initRepo(BACKUP_DIR);
-        await wf(join(BACKUP_DIR, ".gitignore"), "backup-*/\n*.log\nconfig.json\n");
-      }
-      if (await hasRemote(BACKUP_DIR)) {
-        await exec("git", ["remote", "set-url", "origin", url], { cwd: BACKUP_DIR });
+      await ensureBackupRepo(backupDir);
+      if (await hasRemote(backupDir)) {
+        await exec("git", ["remote", "set-url", "origin", url], { cwd: backupDir });
       } else {
-        await addRemote(BACKUP_DIR, url);
+        await addRemote(backupDir, url);
       }
       return json(res, { ok: true, url });
     } catch (err) {
@@ -1099,6 +966,7 @@ async function handleRequest(req, res) {
       }
 
       await setDisabledMcpServers(project, updated);
+      invalidateCachedData(harnessId);
       cachedData = null;
       return json(res, { ok: true, disabled: updated });
     } catch (err) {
@@ -1154,7 +1022,8 @@ async function handleRequest(req, res) {
 
       const { writeFile: writeFileFs } = await import("node:fs/promises");
       await writeFileFs(settingsPath, JSON.stringify(settings, null, 2) + "\n");
-      cachedData = null; // invalidate cache
+      invalidateCachedData(harnessId); // invalidate cache
+      cachedData = null;
       return json(res, { ok: true });
     } catch (err) {
       return json(res, { ok: false, error: err.message }, 500);
@@ -1173,6 +1042,7 @@ async function handleRequest(req, res) {
   if (path === "/api/security-scan" && req.method === "POST") {
     try {
       if (!cachedData) await freshScan();
+      const { securityDir } = await getHarnessPathInfo(harnessId);
 
       // Get all MCP server items from scan data
       const mcpItems = cachedData.items.filter(i => i.category === "mcp" && i.mcpConfig);
@@ -1181,7 +1051,7 @@ async function handleRequest(req, res) {
       const introspectionResults = await introspectServers(mcpItems);
 
       // Phase 2 + 3: Pattern scan + baseline comparison
-      const scanResults = await runSecurityScan(introspectionResults, cachedData);
+      const scanResults = await runSecurityScan(introspectionResults, cachedData, { baselineDir: securityDir });
 
       // Phase 4: Detect duplicate MCP servers (ccsrc signature-based dedup)
       scanResults.duplicates = detectMcpDuplicates(mcpItems);
@@ -1222,9 +1092,10 @@ async function handleRequest(req, res) {
   if (path === "/api/security-baseline-check" && req.method === "GET") {
     try {
       if (!cachedData) await freshScan();
+      const { securityDir } = await getHarnessPathInfo(harnessId);
       const mcpNames = new Set(cachedData.items.filter(i => i.category === "mcp" && i.mcpConfig).map(i => i.name));
       const { loadBaselines } = await import("./security-scanner.mjs");
-      const baselines = await loadBaselines();
+      const baselines = await loadBaselines({ baselineDir: securityDir });
       const baselineNames = new Set(Object.keys(baselines));
 
       const newServers = [...mcpNames].filter(n => !baselineNames.has(n));
@@ -1238,7 +1109,8 @@ async function handleRequest(req, res) {
   // GET /api/security-cache — load cached scan results
   if (path === "/api/security-cache" && req.method === "GET") {
     try {
-      const cachePath = join(CLAUDE_DIR, ".cco-security", "last-scan.json");
+      const { securityDir } = await getHarnessPathInfo(harnessId);
+      const cachePath = join(securityDir, "last-scan.json");
       const content = await readFile(cachePath, "utf-8");
       return json(res, { ok: true, data: JSON.parse(content) });
     } catch {
@@ -1251,9 +1123,9 @@ async function handleRequest(req, res) {
     try {
       const body = await readBody(req);
       const { mkdir: mk, writeFile: wf } = await import("node:fs/promises");
-      const cacheDir = join(CLAUDE_DIR, ".cco-security");
-      await mk(cacheDir, { recursive: true });
-      await wf(join(cacheDir, "last-scan.json"), JSON.stringify(body));
+      const { securityDir } = await getHarnessPathInfo(harnessId);
+      await mk(securityDir, { recursive: true });
+      await wf(join(securityDir, "last-scan.json"), JSON.stringify(body));
       return json(res, { ok: true });
     } catch (err) {
       return json(res, { ok: false, error: err.message }, 500);
@@ -1315,7 +1187,7 @@ export function startServer(port = 3847, maxRetries = 10) {
       console.log(hadClientEver
         ? "\nAll browser tabs closed. Shutting down."
         : "\nNo browser connected within 5 minutes. Shutting down.");
-      console.log("Run again anytime with /cco or npx @mcpware/claude-code-organizer\n");
+      console.log("Run again anytime with /cco or npx @mcpware/cross-code-organizer\n");
       process.exit(0);
     }, ms);
   }
@@ -1362,11 +1234,11 @@ export function startServer(port = 3847, maxRetries = 10) {
   let attempt = 0;
   function tryListen(p) {
     server.listen(p, () => {
-      console.log(`\nClaude Code Organizer running at http://localhost:${p}\n`);
+      console.log(`\nCross-Code Organizer (CCO) running at http://localhost:${p}\n`);
       console.log(`Made by a CS dropout with no mass, no team, no budget \u2014 just Claude Code and ADHD.`);
       console.log(`This is my first open-source project. If it helped you, a star would make my week:`);
-      console.log(`\u2B50 https://github.com/mcpware/claude-code-organizer`);
-      console.log(`\uD83D\uDCEC Bugs, ideas, or just wanna say hi? https://github.com/mcpware/claude-code-organizer/issues \u2014 I fix things same day, I promise`);
+      console.log(`\u2B50 https://github.com/mcpware/cross-code-organizer`);
+      console.log(`\uD83D\uDCEC Bugs, ideas, or just wanna say hi? https://github.com/mcpware/cross-code-organizer/issues \u2014 I fix things same day, I promise`);
       console.log(`\nPress Ctrl+C to stop. Server auto-shuts down when you close all browser tabs.\n`);
       startIdleTimer(); // safety net in case no browser connects
       // Non-blocking update check

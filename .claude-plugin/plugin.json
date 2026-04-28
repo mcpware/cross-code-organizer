@@ -1,13 +1,13 @@
 {
-  "name": "claude-code-organizer",
+  "name": "cross-code-organizer",
   "version": "0.2.5",
   "description": "Organize all your Claude Code memories, skills, MCP servers, and hooks — see what loads globally vs per-project, then move items between scopes",
   "author": {
     "name": "ithiria894",
     "url": "https://github.com/ithiria894"
   },
-  "homepage": "https://github.com/mcpware/claude-code-organizer",
-  "repository": "https://github.com/mcpware/claude-code-organizer",
+  "homepage": "https://github.com/mcpware/cross-code-organizer",
+  "repository": "https://github.com/mcpware/cross-code-organizer",
   "license": "MIT",
   "keywords": [
     "organizer",

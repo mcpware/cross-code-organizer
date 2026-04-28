@@ -1,6 +1,6 @@
 /**
  * E2E tests for Issue #12 (Windows path validation) and Issue #11 (moveMcp project scope)
- * Run: cd claude-code-organizer && DISPLAY=:0 node tests/pw-windows-fix.cjs
+ * Run: cd cross-code-organizer && DISPLAY=:0 node tests/pw-windows-fix.cjs
  */
 const { chromium } = require('/home/nicole/.nvm/versions/node/v20.19.4/lib/node_modules/playwright');
 

@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Claude Code Organizer** runs entirely on your local machine. Here's what that means:
+**Cross-Code Organizer (CCO)** runs entirely on your local machine. Here's what that means:
 
 ## Data Collection
 

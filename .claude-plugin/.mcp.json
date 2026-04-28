@@ -1,8 +1,8 @@
 {
   "mcpServers": {
-    "claude-code-organizer": {
+    "cross-code-organizer": {
       "command": "npx",
-      "args": ["-y", "@mcpware/claude-code-organizer"]
+      "args": ["-y", "@mcpware/cross-code-organizer"]
     }
   }
 }

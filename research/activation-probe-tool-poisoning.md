@@ -52,7 +52,7 @@ The logic across all five rounds is the same: each round removes a text-level sh
 
 ### Round 1: My scanner catches nothing
 
-I built a security scanner for my open-source project (Claude Code Organizer). It has 60 detection rules cherry-picked from reading the source code of 36 MCP security tools. I tested it against MCPTox — 485 poisoned tool descriptions from 45 real MCP servers.
+I built a security scanner for my open-source project (Cross-Code Organizer (CCO)). It has 60 detection rules cherry-picked from reading the source code of 36 MCP security tools. I tested it against MCPTox — 485 poisoned tool descriptions from 45 real MCP servers.
 
 **0 out of 485 detected.**
 
@@ -163,7 +163,7 @@ I've done everything I can with public tools and open-source models. The next st
 ## Reproducibility
 
 The main experiments (Rounds 1-5b) are reproducible from this repo:
-- **Notebook:** [`research/reproduce-experiments.ipynb`](https://github.com/mcpware/claude-code-organizer/blob/main/research/reproduce-experiments.ipynb) — covers Experiments 1-5b end to end
+- **Notebook:** [`research/reproduce-experiments.ipynb`](https://github.com/mcpware/cross-code-organizer/blob/main/research/reproduce-experiments.ipynb) — covers Experiments 1-5b end to end
 - **Execution note:** The notebook is committed as source code plus datasets; exact percentages should be regenerated locally from the included data rather than trusting historical saved outputs.
 - **Datasets:** `research/datasets/` (with README explaining each file)
 - **Scanner benchmark:** `research/benchmark-mcptox.mjs`

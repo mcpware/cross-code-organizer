@@ -1,19 +1,19 @@
-# Claude Code Organizer
+# Cross-Code Organizer (CCO)
 
 > Organize Claude Code memories, skills, MCP servers, commands, agents, rules, hooks, plans, sessions, and config across scopes.
 
 ## Docs
 
-- [AI Index](https://github.com/mcpware/claude-code-organizer/blob/main/AI_INDEX.md): Canonical AI-oriented map of architecture, behavior, tests, drift, and file responsibilities
-- [README](https://github.com/mcpware/claude-code-organizer/blob/main/README.md): Full documentation, features, comparison, quick start
-- [npm package](https://www.npmjs.com/package/@mcpware/claude-code-organizer): Install via npx
-- [MCP Server Mode](https://github.com/mcpware/claude-code-organizer/blob/main/README.md#api): 4 tools — scan_inventory, move_item, delete_item, list_destinations
-- [Glama Listing](https://glama.ai/mcp/servers/mcpware/claude-code-organizer): Verified MCP server with security scorecard
+- [AI Index](https://github.com/mcpware/cross-code-organizer/blob/main/AI_INDEX.md): Canonical AI-oriented map of architecture, behavior, tests, drift, and file responsibilities
+- [README](https://github.com/mcpware/cross-code-organizer/blob/main/README.md): Full documentation, features, comparison, quick start
+- [npm package](https://www.npmjs.com/package/@mcpware/cross-code-organizer): Install via npx
+- [MCP Server Mode](https://github.com/mcpware/cross-code-organizer/blob/main/README.md#api): 4 tools — scan_inventory, move_item, delete_item, list_destinations
+- [Glama Listing](https://glama.ai/mcp/servers/mcpware/cross-code-organizer): Verified MCP server with security scorecard
 
 ## Quick Start
 
 ```bash
-npx @mcpware/claude-code-organizer
+npx @mcpware/cross-code-organizer
 ```
 
 ## What It Does
@@ -31,9 +31,9 @@ npx @mcpware/claude-code-organizer
 ```json
 {
   "mcpServers": {
-    "claude-code-organizer": {
+    "cross-code-organizer": {
       "command": "npx",
-      "args": ["-y", "@mcpware/claude-code-organizer", "--mcp"]
+      "args": ["-y", "@mcpware/cross-code-organizer", "--mcp"]
     }
   }
 }

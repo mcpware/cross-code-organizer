@@ -1,13 +1,13 @@
 {
   "mcpServers": {
-    "claude-code-organizer": {
+    "cross-code-organizer": {
       "command": "npx",
-      "args": ["-y", "@mcpware/claude-code-organizer", "--mcp"]
+      "args": ["-y", "@mcpware/cross-code-organizer", "--mcp"]
     }
   },
   "permissions": {
     "allow": [
-      "Bash(npx @mcpware/claude-code-organizer*)"
+      "Bash(npx @mcpware/cross-code-organizer*)"
     ]
   }
 }

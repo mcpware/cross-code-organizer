@@ -1,5 +1,5 @@
 /**
- * app.js — Frontend logic for Claude Code Organizer.
+ * app.js — Frontend logic for Cross-Code Organizer (CCO).
  *
  * Fetches data from /api/scan, renders the approved three-panel UI,
  * and keeps the existing search, filter, drag/drop, detail, bulk,
@@ -11,9 +11,50 @@ const { EFFECTIVE_RULES, hasEffectiveRule, getAncestorScopes: _getAncestorScopes
         computeEffectiveSets: _computeEffectiveSets, getEffectiveItems } = window.Effective;
 
 // Helper: get effectiveRule for a category (returns string or undefined)
-function getEffectiveRule(category) { return EFFECTIVE_RULES[category] || null; }
+function getEffectiveRule(category) {
+  const categoryDef = getCategoryConfig(category);
+  if (categoryDef.effectiveRule) return categoryDef.effectiveRule;
+  const rule = data?.effective?.rules?.find?.((entry) => entry.category === category)?.rule;
+  return rule || null;
+}
+
+function getCategoryDefs() {
+  const harnessCategories = availableHarnesses.find((harness) => harness.id === selectedHarnessId)?.categories || [];
+  return [...(data?.categories || harnessCategories)].sort((a, b) => {
+    const order = (a.order ?? 999) - (b.order ?? 999);
+    return order || a.label.localeCompare(b.label);
+  });
+}
+
+function getCategoryOrder() {
+  return getCategoryDefs().map((category) => category.id);
+}
+
+function getCategoryConfig(category) {
+  return data?.categories?.find?.((entry) => entry.id === category) || {
+    ...FALLBACK_CATEGORY,
+    id: category,
+    label: capitalize(category),
+    filterLabel: capitalize(category),
+  };
+}
+
+function getScopeTypeConfig(type) {
+  return data?.scopeTypes?.find?.((entry) => entry.id === type) || FALLBACK_SCOPE_TYPE;
+}
+
+function getScopeIcon(type) {
+  return getScopeTypeConfig(type).icon || FALLBACK_SCOPE_TYPE.icon;
+}
+
+function hasCapability(name) {
+  if (!data?.capabilities) return true;
+  return data.capabilities[name] !== false;
+}
 
 let data = null;
+let availableHarnesses = [];
+let selectedHarnessId = localStorage.getItem("cco-selected-harness") || null;
 let activeFilters = new Set();
 let selectedItem = null;
 let selectedScopeId = null;
@@ -35,6 +76,7 @@ let toastTimer = null;
 let detailPreviewKey = null;
 let mcpDisabledNames = new Set(); // disabled MCP server names for current scope
 let mcpDisabledScopeId = null;   // which scope the disabled list was loaded for
+let lastBackupFolder = "~/.claude-backups/latest";
 
 const uiState = {
   expandedScopes: new Set(),
@@ -43,42 +85,8 @@ const uiState = {
   sortBy: {}, // { [catKey]: { field: "size"|"date"|"name", dir: "asc"|"desc" } }
 };
 
-const CATEGORY_ORDER = ["skill", "memory", "mcp", "command", "agent", "plan", "rule", "config", "hook", "plugin", "session", "setting"];
-
-const CATEGORIES = {
-  memory: { icon: "🧠", label: "Memories", filterLabel: "Memories", group: "memory" },
-  skill:  { icon: "⚡", label: "Skills",   filterLabel: "Skills",   group: "skill" },
-  session:{ icon: "💬", label: "Sessions", filterLabel: "Sessions", group: null },
-  mcp:    { icon: "🔌", label: "MCP Servers", filterLabel: "MCP",  group: "mcp" },
-  command:{ icon: "▶️", label: "Commands", filterLabel: "Commands", group: "command" },
-  agent:  { icon: "🤖", label: "Agents",   filterLabel: "Agents",  group: "agent" },
-  plan:   { icon: "📐", label: "Plans",    filterLabel: "Plans",   group: "plan" },
-  rule:   { icon: "📏", label: "Rules",    filterLabel: "Rules",   group: null },
-  config: { icon: "⚙️", label: "Config",   filterLabel: "Config",  group: null },
-  hook:   { icon: "🪝", label: "Hooks",    filterLabel: "Hooks",   group: null },
-  plugin: { icon: "🧩", label: "Plugins",  filterLabel: "Plugins", group: null },
-  setting:{ icon: "🔧", label: "Settings", filterLabel: "Settings", group: null },
-};
-
-const ITEM_ICONS = {
-  memory: "🧠",
-  skill: "⚡",
-  session: "💬",
-  mcp: "🔌",
-  command: "▶️",
-  agent: "🤖",
-  plan: "📐",
-  rule: "📏",
-  config: "⚙️",
-  hook: "🪝",
-  plugin: "🧩",
-  setting: "🔧",
-};
-
-const SCOPE_ICONS = {
-  global: "🌐",
-  project: "📂",
-};
+const FALLBACK_CATEGORY = { icon: "📄", label: "Item", filterLabel: "Item", group: null, order: 999 };
+const FALLBACK_SCOPE_TYPE = { icon: "📂", label: "Scope", isGlobal: false };
 
 const BADGE_CLASS = {
   feedback: "ib-feedback",
@@ -124,12 +132,26 @@ const SHORT_DATE = new Intl.DateTimeFormat("en-US", {
 
 async function init() {
   try {
-    data = await fetchJson("/api/scan");
+    const harnessResponse = await fetchJson("/api/harnesses");
+    if (harnessResponse.ok) {
+      availableHarnesses = harnessResponse.harnesses || [];
+      const validHarnessIds = new Set(availableHarnesses.map((harness) => harness.id));
+      if (!selectedHarnessId || !validHarnessIds.has(selectedHarnessId)) {
+        selectedHarnessId = harnessResponse.defaultHarness || availableHarnesses[0]?.id || "claude";
+      }
+    }
+
+    data = await fetchJson(apiUrl("/api/scan"));
+    selectedHarnessId = data?.harness?.id || selectedHarnessId;
+    localStorage.setItem("cco-selected-harness", selectedHarnessId);
     selectedScopeId = getInitialSelectedScopeId();
     initializeScopeState();
     setupUi();
+    updateHarnessBranding();
+    updateCapabilityVisibility();
     setupScopeNotice();
-    // Load cached scan results + check for new servers BEFORE first render
+    // Load cached scan results + check for new servers BEFORE first render.
+    // MCP tool-definition scanning is harness-agnostic.
     await loadCachedSecurityResults();
     await checkForNewMcpServers();
     renderAll();
@@ -146,7 +168,7 @@ async function init() {
 const CHANGELOG = {
   "0.18.0": {
     title: "Backup Center",
-    tagline: "Never lose your Claude setup again.",
+    tagline: "Never lose your coding harness setup again.",
     changes: [
       "☁ Backup Center: back up every memory, skill, MCP config, rule, plan, agent, and session to a private GitHub repo — one click.",
       "Auto-backup via systemd timer (every 4 hours + on boot). Persistent across reboots.",
@@ -208,12 +230,12 @@ async function checkForUpdate() {
     if (!footer) return;
     const banner = document.createElement("div");
     banner.className = "update-banner";
-    banner.innerHTML = "🔄 New version available — <code>npx @mcpware/claude-code-organizer@latest</code>";
+    banner.innerHTML = "🔄 New version available — <code>npx @mcpware/cross-code-organizer@latest</code>";
     banner.addEventListener("click", () => {
-      navigator.clipboard.writeText("Run npx @mcpware/claude-code-organizer@latest to update Claude Code Organizer to the latest version.").then(() => {
-        banner.innerHTML = "✅ Copied! Paste into Claude Code";
+      navigator.clipboard.writeText("Run npx @mcpware/cross-code-organizer@latest to update Cross-Code Organizer (CCO) to the latest version.").then(() => {
+        banner.innerHTML = "✅ Copied update prompt";
         setTimeout(() => {
-          banner.innerHTML = "🔄 New version available — <code>npx @mcpware/claude-code-organizer@latest</code>";
+          banner.innerHTML = "🔄 New version available — <code>npx @mcpware/cross-code-organizer@latest</code>";
         }, 2000);
       });
     });
@@ -222,8 +244,72 @@ async function checkForUpdate() {
 }
 
 async function fetchJson(url, options) {
-  const res = await fetch(url, options);
+  const res = await fetch(toHarnessUrl(url), options);
   return res.json();
+}
+
+function toHarnessUrl(url) {
+  if (typeof url !== "string" || !url.startsWith("/api/")) return url;
+  if (url.startsWith("/api/harnesses") || url.startsWith("/api/version")) return url;
+  const parsed = new URL(url, window.location.origin);
+  if (selectedHarnessId && !parsed.searchParams.has("harness")) {
+    parsed.searchParams.set("harness", selectedHarnessId);
+  }
+  return `${parsed.pathname}${parsed.search}`;
+}
+
+function apiUrl(path, params = {}) {
+  const url = new URL(path, window.location.origin);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) url.searchParams.set(key, value);
+  }
+  if (path.startsWith("/api/") && selectedHarnessId && path !== "/api/harnesses" && path !== "/api/version") {
+    url.searchParams.set("harness", selectedHarnessId);
+  }
+  return `${url.pathname}${url.search}`;
+}
+
+async function switchHarness(harnessId) {
+  selectedHarnessId = harnessId;
+  localStorage.setItem("cco-selected-harness", harnessId);
+  const loading = document.getElementById("loading");
+  if (loading) {
+    const nextHarness = availableHarnesses.find((harness) => harness.id === harnessId);
+    loading.textContent = `Scanning ${(nextHarness?.displayName || nextHarness?.shortName || harnessId)} inventory...`;
+    loading.classList.remove("hidden");
+  }
+
+  data = await fetchJson(apiUrl("/api/scan"));
+  selectedHarnessId = data?.harness?.id || harnessId;
+  localStorage.setItem("cco-selected-harness", selectedHarnessId);
+  selectedScopeId = getInitialSelectedScopeId();
+  selectedItem = null;
+  detailPreviewKey = null;
+  activeFilters.clear();
+  bulkSelected.clear();
+  showEffective = false;
+  effectiveShadowedKeys = new Set();
+  effectiveConflictKeys = new Set();
+  effectiveAncestorKeys = new Set();
+  mcpDisabledNames = new Set();
+  mcpDisabledScopeId = null;
+  securityScanResults = null;
+  securityBadges = {};
+  securityBaselineStatus = {};
+
+  closeDetail();
+  closeContextBudget();
+  closeMcpControlsPanel();
+  document.getElementById("securityPanel")?.classList.add("hidden");
+  document.getElementById("inheritToggleBtn")?.classList.remove("active");
+
+  initializeScopeState();
+  updateHarnessSelector();
+  updateHarnessBranding();
+  updateCapabilityVisibility();
+  await loadCachedSecurityResults();
+  await checkForNewMcpServers();
+  renderAll();
 }
 
 function setupScopeNotice() {
@@ -233,15 +319,26 @@ function setupScopeNotice() {
   if (!tree) return;
   const notice = document.createElement("div");
   notice.className = "scope-notice";
-  notice.innerHTML = `<span class="scope-notice-dismiss" id="scopeNoticeDismiss">✕</span><strong>How scopes work:</strong> Different categories have different inheritance rules. Use <strong>✦ Show Effective</strong> to see what actually applies in each project. Hover any category pill for its specific rule.`;
+  notice.id = "scopeNotice";
   tree.parentElement.insertBefore(notice, tree);
-  document.getElementById("scopeNoticeDismiss").addEventListener("click", () => {
-    localStorage.setItem(NOTICE_KEY, "1");
+  updateScopeNotice();
+}
+
+function updateScopeNotice() {
+  const notice = document.getElementById("scopeNotice");
+  if (!notice) return;
+  const effectiveCopy = hasCapability("effective")
+    ? `Use <strong>✦ Show Effective</strong> to see what actually applies in each project. Hover any category pill for its specific rule.`
+    : `Categories are shown from the selected scope. Some categories are inventory-only because this harness does not expose project inheritance rules for them.`;
+  notice.innerHTML = `<span class="scope-notice-dismiss" id="scopeNoticeDismiss">✕</span><strong>How ${esc(getHarnessShortName())} scopes work:</strong> Different categories can have different scope rules. ${effectiveCopy}`;
+  document.getElementById("scopeNoticeDismiss")?.addEventListener("click", () => {
+    localStorage.setItem("cco-scope-notice-v1-dismissed", "1");
     notice.remove();
   });
 }
 
 function setupUi() {
+  setupHarnessSelector();
   setupSearch();
   setupSidebarTree();
   setupFilterBar();
@@ -261,6 +358,94 @@ function setupUi() {
   setupMcpControls();
 }
 
+function setupHarnessSelector() {
+  const sidebar = document.getElementById("sidebar");
+  if (!sidebar || document.getElementById("harnessSelectorWrap")) return;
+
+  const wrap = document.createElement("label");
+  wrap.className = "harness-selector-wrap";
+  wrap.id = "harnessSelectorWrap";
+  wrap.innerHTML = `
+    <span class="harness-selector-label">Harness</span>
+    <select class="harness-selector" id="harnessSelector"></select>`;
+
+  sidebar.insertBefore(wrap, document.getElementById("searchInput"));
+  updateHarnessSelector();
+
+  document.getElementById("harnessSelector").addEventListener("change", async (event) => {
+    try {
+      await switchHarness(event.target.value);
+    } catch (error) {
+      toast(error?.message || "Failed to switch harness", true);
+    }
+  });
+}
+
+function updateHarnessSelector() {
+  const select = document.getElementById("harnessSelector");
+  if (!select) return;
+  const scanHarness = data?.harness ? [data.harness] : [];
+  const harnesses = availableHarnesses.length ? availableHarnesses : scanHarness;
+  select.innerHTML = harnesses.map((harness) => `
+    <option value="${esc(harness.id)}"${harness.id === selectedHarnessId ? " selected" : ""}>
+      ${esc(`${harness.icon || ""} ${harness.displayName || harness.shortName || harness.id}`.trim())}
+    </option>`).join("");
+  select.disabled = harnesses.length <= 1;
+}
+
+function updateHarnessBranding() {
+  const harness = getHarnessDescriptor();
+  const name = getHarnessName();
+  const shortName = getHarnessShortName();
+  const icon = harness.icon || "✳️";
+  const executable = getHarnessExecutable();
+
+  document.title = "Cross-Code Organizer (CCO)";
+  const logo = document.getElementById("harnessLogoIcon");
+  if (logo) {
+    if (harness.iconSvg) {
+      logo.innerHTML = harness.iconSvg;
+    } else {
+      logo.textContent = icon;
+    }
+  }
+  const title = document.getElementById("sidebarTitle");
+  if (title) title.textContent = "Cross-Code Organizer (CCO)";
+  const loading = document.getElementById("loading");
+  if (loading) loading.textContent = `Scanning ${name} inventory...`;
+  const promptLabel = document.getElementById("detailPromptLabel");
+  if (promptLabel) promptLabel.textContent = `${shortName} Prompt`;
+  const footerHint = document.getElementById("sidebarFooterHint");
+  if (footerHint) {
+    footerHint.innerHTML = executable === "claude"
+      ? `Type <code>/cco</code> in ${esc(name)} to reopen`
+      : `Selected harness: <code>${esc(executable)}</code>`;
+  }
+  updateScopeNotice();
+}
+
+function updateCapabilityVisibility() {
+  const ctxBtn = document.getElementById("ctxBudgetBtn");
+  const mcpBtn = document.getElementById("mcpControlsBtn");
+  const effectiveBtn = document.getElementById("inheritToggleBtn");
+  const exportBtn = document.getElementById("exportBtn");
+
+  ctxBtn?.classList.toggle("hidden", !hasCapability("contextBudget"));
+  mcpBtn?.classList.toggle("hidden", !hasCapability("mcpControls"));
+  effectiveBtn?.classList.toggle("hidden", !hasCapability("effective"));
+  exportBtn?.classList.toggle("hidden", !hasCapability("backup"));
+
+  if (!hasCapability("contextBudget")) closeContextBudget();
+  if (!hasCapability("mcpControls")) closeMcpControlsPanel();
+  if (!hasCapability("effective")) {
+    showEffective = false;
+    effectiveShadowedKeys = new Set();
+    effectiveConflictKeys = new Set();
+    effectiveAncestorKeys = new Set();
+    effectiveBtn?.classList.remove("active");
+  }
+}
+
 function setupSearch() {
   const input = document.getElementById("searchInput");
   input.addEventListener("input", () => {
@@ -275,9 +460,9 @@ function setupSidebarTree() {
     if (catRow) {
       selectedScopeId = catRow.dataset.scopeId;
       expandScopePath(selectedScopeId);
-      if (isContextBudgetOpen()) {
+      if (hasCapability("contextBudget") && isContextBudgetOpen()) {
         openContextBudget(selectedScopeId);
-      } else if (!document.getElementById("mcpControlsPanel").classList.contains("hidden")) {
+      } else if (hasCapability("mcpControls") && !document.getElementById("mcpControlsPanel").classList.contains("hidden")) {
         openMcpControlsPanel();
       }
       const cat = catRow.dataset.cat;
@@ -307,9 +492,9 @@ function setupSidebarTree() {
     showEffective = false; effectiveShadowedKeys = new Set(); effectiveConflictKeys = new Set(); effectiveAncestorKeys = new Set();
     document.getElementById("inheritToggleBtn")?.classList.remove("active");
     expandScopePath(selectedScopeId);
-    if (isContextBudgetOpen()) {
+    if (hasCapability("contextBudget") && isContextBudgetOpen()) {
       openContextBudget(selectedScopeId);
-    } else if (!document.getElementById("mcpControlsPanel").classList.contains("hidden")) {
+    } else if (hasCapability("mcpControls") && !document.getElementById("mcpControlsPanel").classList.contains("hidden")) {
       openMcpControlsPanel();
     } else if (selectedItem && selectedItem.scopeId !== selectedScopeId) {
       closeDetail();
@@ -353,6 +538,7 @@ function setupItemList() {
     if (actionBtn) {
       // MCP toggle doesn't need the item object — handle first
       if (actionBtn.dataset.action === "mcp-toggle") {
+        if (!hasCapability("mcpControls")) return;
         const mcpName = actionBtn.dataset.mcpName;
         const scope = getScopeById(selectedScopeId);
         if (!scope?.repoDir) return;
@@ -380,7 +566,7 @@ function setupItemList() {
         const sessionId = item.fileName?.replace(/\.jsonl$/, "") || "";
         const scope = getScopeById(item.scopeId);
         const dir = scope?.repoDir || "~";
-        const cmd = `cd ${dir} && claude --resume ${sessionId}`;
+        const cmd = `cd ${dir} && ${getHarnessExecutable()} --resume ${sessionId}`;
         navigator.clipboard.writeText(cmd).then(() => {
           toast("Copied resume command — paste in terminal");
         });
@@ -389,7 +575,7 @@ function setupItemList() {
         actionBtn.disabled = true;
         actionBtn.textContent = "...";
         try {
-          const resp = await fetch(`/api/session-distill?path=${encodeURIComponent(item.path)}`, { method: "POST" });
+          const resp = await fetch(apiUrl("/api/session-distill", { path: item.path }), { method: "POST" });
           const data = await resp.json();
           if (data.ok) {
             toast(`Distilled: ${data.stats.reduction} reduction, ${data.stats.indexEntries || 0} indexed refs`);
@@ -438,7 +624,7 @@ function setupItemList() {
     if (newSessionBtn) {
       const scope = getScopeById(newSessionBtn.dataset.scopeId);
       const dir = scope?.repoDir || "~";
-      const cmd = `cd ${dir} && claude`;
+      const cmd = `cd ${dir} && ${getHarnessExecutable()}`;
       navigator.clipboard.writeText(cmd).then(() => {
         toast("Copied: " + cmd);
       });
@@ -555,7 +741,7 @@ async function showCostBreakdown(item) {
   modelsEl.innerHTML = "";
 
   try {
-    const res = await fetch(`/api/session-cost?path=${encodeURIComponent(item.path)}`);
+    const res = await fetch(apiUrl("/api/session-cost", { path: item.path }));
     const data = await res.json();
     if (!data.ok) { totalEl.textContent = "Error loading cost"; return; }
 
@@ -754,6 +940,9 @@ function setupResizer(resizerId, panelId, direction) {
 
 function renderAll() {
   normalizeState();
+  updateCapabilityVisibility();
+  updateHarnessSelector();
+  updateHarnessBranding();
   renderSidebar();
   renderContentHeader();
   renderPills();
@@ -850,7 +1039,7 @@ function renderSidebarScope(scope, overrideChildHtml) {
 
   const categoryRows = getSidebarCategoryCounts(scope.id)
     .map(({ category, count }) => {
-      const config = CATEGORIES[category] || { icon: "📄", label: capitalize(category) };
+      const config = getCategoryConfig(category);
       return `
         <div class="s-cat" data-scope-id="${esc(scope.id)}" data-cat="${esc(category)}">
           <span class="s-cat-ico">${config.icon}</span>
@@ -866,7 +1055,7 @@ function renderSidebarScope(scope, overrideChildHtml) {
   const isExpanded = hasNestedContent && (searchQuery ? true : uiState.expandedScopes.has(scope.id));
   // In drag/collapse mode: always show children (scope names), hide categories
   const showBody = isDragMode ? hasChildren : (isExpanded && hasNestedContent);
-  const icon = SCOPE_ICONS[scope.type] || "📂";
+  const icon = getScopeIcon(scope.type);
 
   return `
     <div class="s-scope scope-block" data-scope-id="${esc(scope.id)}">
@@ -932,8 +1121,8 @@ function renderPills() {
   const NO_RULE_TIP = "No official scope rule — shown as inventory only";
   const pills = [
     { key: "all", label: "All", icon: "◌", count: scopeTotal, tip: null },
-    ...CATEGORY_ORDER.map((category) => {
-      const config = CATEGORIES[category] || { icon: "📄", filterLabel: capitalize(category) };
+    ...getCategoryOrder().map((category) => {
+      const config = getCategoryConfig(category);
       const hasRule = Boolean(getEffectiveRule(category));
       return {
         key: category,
@@ -988,7 +1177,7 @@ function renderRuleBar() {
   const content = document.getElementById("ruleBarContent");
   if (!bar || !toggle || !content) return;
 
-  if (!showEffective || !selectedScopeId || selectedScopeId === "global") {
+  if (!hasCapability("effective") || !showEffective || !selectedScopeId || selectedScopeId === "global") {
     bar.classList.add("hidden");
     return;
   }
@@ -996,8 +1185,8 @@ function renderRuleBar() {
   bar.classList.remove("hidden");
 
   // Build rule rows for all categories
-  const rows = CATEGORY_ORDER.map(cat => {
-    const config = CATEGORIES[cat];
+  const rows = getCategoryOrder().map(cat => {
+    const config = getCategoryConfig(cat);
     if (!config) return "";
     const rule = getEffectiveRule(cat);
     const noRule = !rule;
@@ -1018,6 +1207,7 @@ function renderRuleBar() {
 }
 
 async function loadMcpDisabledList(force = false) {
+  if (!hasCapability("mcpControls")) { mcpDisabledNames = new Set(); return; }
   if (!force && mcpDisabledScopeId === selectedScopeId) return; // already loaded for this scope
   mcpDisabledScopeId = selectedScopeId;
   const scope = getScopeById(selectedScopeId);
@@ -1038,7 +1228,7 @@ function renderMainContent() {
   }
 
   const items = getVisibleItemsForScope(scope.id);
-  const categories = CATEGORY_ORDER
+  const categories = getCategoryOrder()
     .map((category) => ({
       category,
       items: sortCategoryItems(category, items.filter((item) => item.category === category)),
@@ -1056,7 +1246,7 @@ function renderMainContent() {
   }
 
   itemList.innerHTML = categories.map(({ category, items: catItems }) => {
-    const config = CATEGORIES[category] || { icon: "📄", label: capitalize(category), group: null };
+    const config = getCategoryConfig(category);
     const catKey = `${scope.id}::${category}`;
     const collapsed = searchQuery ? false : uiState.collapsedCats.has(catKey);
 
@@ -1067,7 +1257,7 @@ function renderMainContent() {
           <span class="cat-hdr-ico">${config.icon}</span>
           <span class="cat-hdr-nm">${esc(config.label)}</span>
           <span class="cat-hdr-cnt">${pluralize(catItems.length, "item")}</span>
-          ${category === "session" ? `<button type="button" class="new-session-btn" data-scope-id="${esc(scope.id)}" title="Copy command to start a new session">＋ New</button>` : ""}
+          ${category === "session" && hasCapability("sessions") ? `<button type="button" class="new-session-btn" data-scope-id="${esc(scope.id)}" title="Copy command to start a new session">＋ New</button>` : ""}
           ${category === "mcp" ? "" : `<span class="cat-hdr-sort">
             <button type="button" class="sort-btn${(uiState.sortBy[`${scope.id}::${category}`]?.field === "size") ? " active" : ""}" data-cat="${esc(category)}" data-sort="size">Size ${sortArrow(`${scope.id}::${category}`, "size")}</button>
             <button type="button" class="sort-btn${(uiState.sortBy[`${scope.id}::${category}`]?.field === "date") ? " active" : ""}" data-cat="${esc(category)}" data-sort="date">Date ${sortArrow(`${scope.id}::${category}`, "date")}</button>
@@ -1147,7 +1337,7 @@ function renderSettingValuePreview(item) {
 }
 
 function renderItem(item) {
-  const icon = ITEM_ICONS[item.category] || "📄";
+  const icon = getCategoryConfig(item.category).icon || "📄";
   const key = itemKey(item);
   const isSelected = selectedItem && itemKey(selectedItem) === key;
   const checked = bulkSelected.has(key) ? " checked" : "";
@@ -1164,20 +1354,29 @@ function renderItem(item) {
   const isFromAncestor = showEffective && effectiveAncestorKeys.has(key);
   const isShadowed     = isFromGlobal && effectiveShadowedKeys.has(key);
   const isConflict     = showEffective && effectiveConflictKeys.has(key);
-  const effectiveBadge = isShadowed     ? `<span class="scope-tag st-shadowed" data-tooltip="This item is overridden by a project-scoped item with the same name">Shadowed</span>`
-                       : isConflict     ? `<span class="scope-tag st-conflict" data-tooltip="Same name exists in both user and project scope — Claude Code does not guarantee which one applies">⚠ Conflict</span>`
-                       : isFromAncestor ? `<span class="scope-tag st-ancestor" data-tooltip="From a parent directory — Claude Code loads CLAUDE.md files by walking up from the working directory">Ancestor</span>`
-                       : isFromGlobal   ? `<span class="scope-tag st-global" data-tooltip="Available globally from ~/.claude/ — applies to all projects on this machine">Global</span>`
+  const harnessShortName = getHarnessShortName();
+  const harnessId = getHarnessDescriptor().id;
+  const globalConfigRoot = harnessId === "claude" ? "~/.claude/" : harnessId === "codex" ? "~/.codex/" : "the harness global config";
+  const shadowedTip = "This item is overridden by a project-scoped item with the same name";
+  const conflictTip = `Same name exists in both user and project scope — ${harnessShortName} does not guarantee which one applies`;
+  const ancestorTip = harnessId === "claude"
+    ? "From a parent directory — Claude Code loads CLAUDE.md files by walking up from the working directory"
+    : `From a parent directory — ${harnessShortName} may load parent-scope instruction files depending on the selected project`;
+  const globalTip = `Available globally from ${globalConfigRoot} — applies to all projects on this machine`;
+  const effectiveBadge = isShadowed     ? `<span class="scope-tag st-shadowed" data-tooltip="${esc(shadowedTip)}">Shadowed</span>`
+                       : isConflict     ? `<span class="scope-tag st-conflict" data-tooltip="${esc(conflictTip)}">⚠ Conflict</span>`
+                       : isFromAncestor ? `<span class="scope-tag st-ancestor" data-tooltip="${esc(ancestorTip)}">Ancestor</span>`
+                       : isFromGlobal   ? `<span class="scope-tag st-global" data-tooltip="${esc(globalTip)}">Global</span>`
                        : "";
   const isMcpDisabled = item.category === "mcp" && mcpDisabledNames.has(item.name);
-  const mcpToggleBtn = item.category === "mcp"
+  const mcpToggleBtn = item.category === "mcp" && hasCapability("mcpControls")
     ? `<button type="button" class="act-btn ${isMcpDisabled ? "act-mcp-enable" : "act-mcp-disable"}" data-action="mcp-toggle" data-mcp-name="${esc(item.name)}" title="${isMcpDisabled ? "Re-enable in this project" : "Disable in this project"}">${isMcpDisabled ? "Enable" : "Disable"}</button>`
     : "";
   // Session rows get Resume + Distill instead of Move/Open/Del
-  const sessionActions = item.subType === "session" ? `
+  const sessionActions = isSessionTranscript(item) && hasCapability("sessions") ? `
     <span class="item-actions">
       <button type="button" class="act-btn act-resume" data-action="resume" title="Copy resume command">Resume</button>
-      <button type="button" class="act-btn act-distill" data-action="distill" title="Distill session (backup + clean)">Distill</button>
+      ${canDistillSession(item) ? `<button type="button" class="act-btn act-distill" data-action="distill" title="Distill session (backup + clean)">Distill</button>` : ""}
     </span>` : null;
 
   const actions = sessionActions || ((item.locked || isFromGlobal) ? (mcpToggleBtn ? `<span class="item-actions">${mcpToggleBtn}</span>` : "") : `
@@ -1268,7 +1467,7 @@ function renderDetailPanel(resetPreview = false) {
   title.textContent = selectedItem.name;
 
   // For sessions: replace breadcrumb with cost breakdown button
-  if (selectedItem.category === "session" && selectedItem.path?.endsWith(".jsonl")) {
+  if (isSessionTranscript(selectedItem)) {
     crumb.innerHTML = `<button class="d-btn d-btn-cost" id="crumbCostBtn" type="button">💰 Cost Breakdown</button>`;
     document.getElementById("crumbCostBtn").addEventListener("click", () => showCostBreakdown(selectedItem));
   } else {
@@ -1402,9 +1601,9 @@ function renderEffectiveBehavior(item) {
   text.textContent = why;
 }
 
-// ── Item Config (frontmatter fields for skills, agents, memories) ─────────────
+// ── Item Config (harness-specific fields for editable item metadata) ─────────
 
-const ITEM_CONFIG_FIELDS = {
+const CLAUDE_ITEM_CONFIG_FIELDS = {
   skill: [
     { key: "model", label: "Model", type: "select", options: ["", "opus", "sonnet", "haiku", "inherit"], labels: ["(not set) — uses default model", "opus", "sonnet", "haiku", "inherit"], tooltip: "When set, Claude Code uses this model instead of your session default when running this skill. Official SKILL.md frontmatter field." },
     { key: "when_to_use", label: "When to use", type: "text", placeholder: "(not set) — describe when AI should auto-trigger this skill", tooltip: "Claude Code may auto-invoke skills based on context. Setting this gives more specific guidance on when this skill should be triggered." },
@@ -1418,10 +1617,32 @@ const ITEM_CONFIG_FIELDS = {
   ],
 };
 
+const CODEX_ITEM_CONFIG_FIELDS = {
+  skill: [
+    { key: "name", label: "Name", type: "text", placeholder: "(not set) — uses folder name", tooltip: "Codex skill frontmatter field used as the skill identifier." },
+    { key: "description", label: "Description", type: "textarea", placeholder: "(not set) — describe when Codex should use this skill", tooltip: "Codex uses this description to decide when the skill is relevant." },
+  ],
+  profile: [
+    { key: "model", label: "Model", source: "value", type: "text", readOnly: true, placeholder: "(inherits global model)", tooltip: "Codex profile model override from ~/.codex/config.toml." },
+    { key: "sandbox_mode", label: "Sandbox", source: "value", type: "text", readOnly: true, placeholder: "(inherits global sandbox)", tooltip: "Codex profile sandbox mode from ~/.codex/config.toml." },
+    { key: "approval_policy", label: "Approval", source: "value", type: "text", readOnly: true, placeholder: "(inherits global approval policy)", tooltip: "Codex profile approval policy from ~/.codex/config.toml." },
+    { key: "model_reasoning_effort", label: "Reasoning effort", source: "value", type: "text", readOnly: true, placeholder: "(inherits global reasoning effort)", tooltip: "Codex profile reasoning effort from ~/.codex/config.toml." },
+  ],
+};
+
 let _itemConfigTimers = {};
+let _itemConfigRenderSeq = 0;
+
+function getItemConfigFields(item) {
+  if (!item) return null;
+  const harnessId = getHarnessDescriptor().id;
+  if (harnessId === "codex") return CODEX_ITEM_CONFIG_FIELDS[item.category] || null;
+  if (harnessId === "claude") return CLAUDE_ITEM_CONFIG_FIELDS[item.category] || null;
+  return null;
+}
 
 function getItemFilePath(item) {
-  if (item.category === "skill") return `${item.path}/SKILL.md`;
+  if (item.category === "skill") return item.openPath || `${item.path}/SKILL.md`;
   if (item.category === "agent") return `${item.path}`;
   if (item.category === "memory") return item.path;
   return null;
@@ -1430,29 +1651,46 @@ function getItemFilePath(item) {
 async function renderItemConfig(item) {
   const wrap = document.getElementById("detailItemConfig");
   if (!wrap) return;
+  const renderSeq = ++_itemConfigRenderSeq;
 
-  const fields = item ? ITEM_CONFIG_FIELDS[item.category] : null;
+  const fields = getItemConfigFields(item);
   if (!fields) { wrap.classList.add("hidden"); wrap.innerHTML = ""; return; }
+  wrap.classList.add("hidden");
+  wrap.innerHTML = "";
 
-  const filePath = getItemFilePath(item);
-  if (!filePath) { wrap.classList.add("hidden"); return; }
+  const frontmatterFields = fields.filter(field => (field.source || "frontmatter") === "frontmatter");
+  const filePath = frontmatterFields.length ? getItemFilePath(item) : null;
+  if (frontmatterFields.length && !filePath) { wrap.classList.add("hidden"); return; }
 
   // Read file to get current frontmatter values
   let fm = {};
-  try {
-    const res = await fetchJson(`/api/file-content?path=${encodeURIComponent(filePath)}`);
-    if (!res.ok) { wrap.classList.add("hidden"); return; }
-    fm = parseFrontmatter(res.content);
-  } catch { wrap.classList.add("hidden"); return; }
+  if (frontmatterFields.length) {
+    try {
+      const res = await fetchJson(`/api/file-content?path=${encodeURIComponent(filePath)}`);
+      if (renderSeq !== _itemConfigRenderSeq || !selectedItem || itemKey(item) !== itemKey(selectedItem)) return;
+      if (!res.ok) { wrap.classList.add("hidden"); return; }
+      fm = parseFrontmatter(res.content);
+    } catch {
+      if (renderSeq === _itemConfigRenderSeq) wrap.classList.add("hidden");
+      return;
+    }
+  }
 
   // Build HTML
   let html = "";
   for (const field of fields) {
+    const fieldSource = field.source || "frontmatter";
+    const values = fieldSource === "value" ? (item.value || {}) : fm;
+    const val = values[field.key] || "";
+    const canEdit = fieldSource === "frontmatter" && !field.readOnly;
+    const readonlyAttr = field.readOnly ? " readonly" : "";
+    const editAttrs = canEdit ? ` data-fm-key="${esc(field.key)}" data-fm-path="${esc(filePath)}"` : "";
+    const readonlyClass = field.readOnly ? " d-item-readonly" : "";
     html += `<div class="d-item-config-row">`;
     html += `<span class="d-info-label" data-tooltip="${esc(field.tooltip)}">${esc(field.label)}</span>`;
 
     if (field.type === "select") {
-      html += `<select class="d-item-select" data-fm-key="${esc(field.key)}" data-fm-path="${esc(filePath)}">`;
+      html += `<select class="d-item-select${readonlyClass}"${editAttrs}${canEdit ? "" : " disabled"}>`;
       for (let i = 0; i < field.options.length; i++) {
         const val = field.options[i];
         const label = field.labels?.[i] || val;
@@ -1461,11 +1699,11 @@ async function renderItemConfig(item) {
       }
       html += `</select>`;
     } else if (field.type === "number") {
-      const val = fm[field.key] || "";
-      html += `<input type="number" class="d-item-input d-item-number" data-fm-key="${esc(field.key)}" data-fm-path="${esc(filePath)}" value="${esc(val)}" placeholder="${esc(field.placeholder || "")}" min="1">`;
+      html += `<input type="number" class="d-item-input d-item-number${readonlyClass}"${editAttrs} value="${esc(val)}" placeholder="${esc(field.placeholder || "")}" min="1"${readonlyAttr}>`;
+    } else if (field.type === "textarea") {
+      html += `<textarea class="d-item-input d-item-textarea${readonlyClass}"${editAttrs} placeholder="${esc(field.placeholder || "")}"${readonlyAttr}>${esc(val)}</textarea>`;
     } else {
-      const val = fm[field.key] || "";
-      html += `<input type="text" class="d-item-input" data-fm-key="${esc(field.key)}" data-fm-path="${esc(filePath)}" value="${esc(val)}" placeholder="${esc(field.placeholder || "")}">`;
+      html += `<input type="text" class="d-item-input${readonlyClass}"${editAttrs} value="${esc(val)}" placeholder="${esc(field.placeholder || "")}"${readonlyAttr}>`;
     }
     html += `</div>`;
   }
@@ -1477,7 +1715,7 @@ async function renderItemConfig(item) {
   wrap.querySelectorAll("select[data-fm-key]").forEach(sel => {
     sel.addEventListener("change", () => saveFrontmatterField(sel.dataset.fmPath, sel.dataset.fmKey, sel.value));
   });
-  wrap.querySelectorAll("input[data-fm-key]").forEach(inp => {
+  wrap.querySelectorAll("input[data-fm-key], textarea[data-fm-key]").forEach(inp => {
     inp.addEventListener("input", () => {
       const k = inp.dataset.fmKey;
       clearTimeout(_itemConfigTimers[k]);
@@ -1538,88 +1776,110 @@ async function saveFrontmatterField(filePath, key, value) {
   }
 }
 
+function getHarnessDescriptor() {
+  return data?.harness || availableHarnesses.find((harness) => harness.id === selectedHarnessId) || {
+    id: selectedHarnessId || "harness",
+    displayName: "Selected Harness",
+    shortName: "Harness",
+    executable: "harness",
+  };
+}
+
+function getHarnessName() {
+  const harness = getHarnessDescriptor();
+  return harness.displayName || harness.shortName || harness.id || "Selected Harness";
+}
+
+function getHarnessShortName() {
+  const harness = getHarnessDescriptor();
+  return harness.shortName || harness.displayName || harness.id || "Harness";
+}
+
+function getHarnessExecutable() {
+  return getHarnessDescriptor().executable || selectedHarnessId || "harness";
+}
+
+function isSessionTranscript(item) {
+  return item?.category === "session" && item.path?.endsWith(".jsonl") && item.subType !== "session-index";
+}
+
+function canDistillSession(item) {
+  return isSessionTranscript(item) && getHarnessDescriptor().id === "claude";
+}
+
+function getPromptTemplates() {
+  return data?.adapterData?.prompts || data?.prompts || null;
+}
+
+function getPromptContext(item, extra = {}) {
+  const scope = getScopeById(item.scopeId);
+  const sessionId = item.sessionId || item.fileName?.replace(/\.jsonl$/, "") || "";
+  const cdCmd = scope?.repoDir ? `cd ${scope.repoDir} && ` : "";
+  return {
+    category: item.category,
+    cdCmd,
+    executable: getHarnessExecutable(),
+    fileName: item.fileName || "",
+    harnessName: getHarnessName(),
+    mcpCommand: item.mcpConfig?.command || "unknown",
+    mcpConfigJson: JSON.stringify(item.mcpConfig || {}, null, 2),
+    mcpPackageArg: (item.mcpConfig?.args || [])[1] || "",
+    name: item.name,
+    path: item.path || "",
+    scopeId: item.scopeId,
+    sessionId,
+    subType: item.subType || item.category,
+    ...extra,
+  };
+}
+
+function renderPromptTemplate(template, context) {
+  if (!template) return template;
+  return String(template).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key) => {
+    return context[key] === undefined || context[key] === null ? "" : String(context[key]);
+  });
+}
+
+function resolvePromptAction(action, prompts) {
+  if (!action?.use) return action;
+  const [group, key] = action.use.split(".");
+  return prompts?.[group]?.[key] || null;
+}
+
+function shouldShowPromptAction(action, item) {
+  if (!action) return false;
+  if (!action.when) return true;
+  if (action.when === "notDistilled") return !item.name?.startsWith("[distilled");
+  if (action.when === "securitySeverityUnreachable") return getSecuritySeverity(item.name) === "unreachable";
+  return true;
+}
+
 function renderCcActions(item) {
   const container = document.getElementById("detailCcActions");
   const btnRow = document.getElementById("ccBtnRow");
-  const buttons = [];
-
-  const explainPrompt = `I have a Claude Code ${item.category} called "${item.name}" at:\n${item.path}\n\nPlease read this file and explain:\n1. What does this ${item.category} do?\n2. When does it get loaded / triggered?\n3. What would break if I removed or changed it?\n4. Are there any other files that depend on it?`;
-
-  // Info line for unlocked items
-  if (!item.locked && item.category !== "session") {
-    buttons.push({ ico: "🤖", label: "", prompt: null, info: "Use these prompts for guided changes — Claude Code will read the file, explain the impact, and confirm before making changes." });
+  const prompts = getPromptTemplates()?.actions;
+  if (!prompts?.categories) {
+    container.classList.add("hidden");
+    return;
   }
 
-  switch (item.category) {
-    case "session": {
-      const sessionId = (item.fileName || "").replace(".jsonl", "");
-      if (sessionId) {
-        const sessionScope = getScopeById(item.scopeId);
-        const cdCmd = sessionScope?.repoDir ? `cd ${sessionScope.repoDir} && ` : "";
-        buttons.push({ ico: "💡", label: "", prompt: null, info: "Sessions can be resumed directly in Claude Code. Copy the command below and paste it in any terminal to continue where you left off." });
-        buttons.push({ ico: "💬", label: "Resume Session", prompt: `${cdCmd}claude --resume ${sessionId}\n\n# Session file: ${item.path}` });
-        buttons.push({ ico: "📋", label: "Summarize", prompt: `I have a Claude Code session at:\n${item.path}\n\nPlease read this session file and give me a summary:\n1. What was this session about?\n2. What was accomplished?\n3. Were there any unfinished tasks or pending actions?\n4. What files were modified?` });
-
-        // Not yet distilled — show distill option in CC actions
-        if (!item.name?.startsWith("[distilled")) {
-          buttons.push({ ico: "🧹", label: "Distill Session", prompt: `Please distill this session for me:\n${item.path}\n\nThis will:\n1. Back up the original (CC compact will destroy it otherwise)\n2. Create a clean resumable session\n3. Generate an index of large tool results` });
-        }
-      }
-      break;
-    }
-    case "memory":
-      buttons.push({ ico: "📋", label: "Explain This", prompt: explainPrompt });
-      buttons.push({ ico: "✏️", label: "Edit Content", prompt: `I want to edit this Claude Code memory: "${item.name}"\nPath: ${item.path}\nType: ${item.subType || "memory"}\n\nBefore editing:\n1. Read the current content\n2. Show me the current frontmatter (name, description, type) and body\n3. Ask me what I want to change\n4. Show the before vs after diff\n5. Only save after I confirm` });
-      break;
-    case "skill":
-      buttons.push({ ico: "📋", label: "Explain This", prompt: explainPrompt });
-      buttons.push({ ico: "✏️", label: "Edit Skill", prompt: `I want to edit this Claude Code skill: "${item.name}"\nPath: ${item.path}\n\nBefore editing:\n1. Read the SKILL.md content\n2. Explain what this skill does and when it triggers\n3. Ask me what I want to change\n4. Show the before vs after diff\n5. Warn if the change could affect how Claude Code invokes it\n6. Only save after I confirm` });
-      break;
-    case "mcp":
-      buttons.push({ ico: "📋", label: "Explain This", prompt: `I have a Claude Code MCP server called "${item.name}" at:\n${item.path}\n\nPlease explain:\n1. What does this MCP server do?\n2. What tools does it provide?\n3. How is it configured (command, args, env)?\n4. Is it currently working? Check if the command exists on this system.` });
-      buttons.push({ ico: "🔧", label: "Edit Config", prompt: `I want to modify this MCP server configuration: "${item.name}"\nPath: ${item.path}\n\nBefore changing:\n1. Read the current MCP config\n2. Show me the current command, args, and env settings\n3. Ask me what I want to change\n4. Show the before vs after diff\n5. Warn if this could break any tools that depend on this MCP server\n6. Only save after I confirm` });
-      if (getSecuritySeverity(item.name) === "unreachable") {
-        buttons.push({ ico: "🩺", label: "Fix Server", prompt: `My MCP server "${item.name}" is unreachable — it failed to connect during a security scan.\nConfig path: ${item.path}\nConfig: ${JSON.stringify(item.mcpConfig, null, 2)}\n\nPlease diagnose and fix:\n1. Check if the command exists: which ${item.mcpConfig?.command || "unknown"}\n2. If it's an npx package, check if it's installed: npm ls -g ${(item.mcpConfig?.args || [])[1] || ""}\n3. Check if required env vars are set\n4. Try running the server manually to see the error\n5. Suggest a fix (install package, set env var, fix config)\n6. Only make changes after I confirm` });
-      }
-      break;
-    case "plan":
-      buttons.push({ ico: "📋", label: "Explain This", prompt: explainPrompt });
-      buttons.push({ ico: "▶️", label: "Continue Plan", prompt: `I have an existing Claude Code plan at:\n${item.path}\n\nPlease read this plan and:\n1. Summarize what the plan is about\n2. Show which steps are done and which are remaining\n3. Ask me if I want to continue from where it left off` });
-      break;
-    case "command":
-      buttons.push({ ico: "📋", label: "Explain This", prompt: explainPrompt });
-      buttons.push({ ico: "✏️", label: "Edit Command", prompt: `I want to edit this Claude Code command: "${item.name}"\nPath: ${item.path}\n\nBefore editing:\n1. Read the current content\n2. Explain what this command does and its argument format\n3. Ask me what I want to change\n4. Show the before vs after diff\n5. Only save after I confirm` });
-      break;
-    case "agent":
-      buttons.push({ ico: "📋", label: "Explain This", prompt: explainPrompt });
-      buttons.push({ ico: "✏️", label: "Edit Agent", prompt: `I want to edit this Claude Code agent: "${item.name}"\nPath: ${item.path}\n\nBefore editing:\n1. Read the current content\n2. Explain what this agent does, what tools it has, and what model it uses\n3. Ask me what I want to change\n4. Show the before vs after diff\n5. Only save after I confirm` });
-      break;
-    case "rule":
-      buttons.push({ ico: "💡", label: "", prompt: null, info: "Rules enforce project-specific constraints. Use these prompts to understand or modify them." });
-      buttons.push({ ico: "📋", label: "Explain This", prompt: `I have a Claude Code rule: "${item.name}"\nPath: ${item.path}\n\nPlease read this rule and explain:\n1. What constraint does it enforce?\n2. Why was it created?\n3. What would happen if it were removed?\n4. Are there any edge cases it doesn't cover?` });
-      buttons.push({ ico: "✏️", label: "Modify", prompt: `I want to modify this Claude Code rule: "${item.name}"\nPath: ${item.path}\n\nBefore making any changes:\n1. Read the current content\n2. Explain the rule\n3. Ask me what I want to change\n4. Show the before vs after diff\n5. Warn if the change could weaken important constraints\n6. Only save after I confirm` });
-      break;
-    case "config":
-      buttons.push({ ico: "💡", label: "", prompt: null, info: "Config files are managed by Claude Code. Use these prompts to ask Claude Code to help you understand or modify them." });
-      buttons.push({ ico: "📋", label: "Explain This", prompt: `I have a Claude Code config file: "${item.name}"\nPath: ${item.path}\n\nPlease read it and explain:\n1. What does each setting do?\n2. Which settings are most important?\n3. Are there any settings that look unusual or could cause issues?` });
-      buttons.push({ ico: "✏️", label: "Modify", prompt: `I want to modify this Claude Code config: "${item.name}"\nPath: ${item.path}\n\nBefore making any changes:\n1. Read the current content\n2. Explain what each setting does\n3. Ask me what I want to change\n4. Show exactly what will change (before vs after)\n5. Warn if the change could break anything\n6. Only apply after I confirm` });
-      buttons.push({ ico: "🗑️", label: "Remove", prompt: `I want to remove this Claude Code config file: "${item.name}"\nPath: ${item.path}\n\n⚠️ This is a config file — removing it can significantly change how Claude Code behaves in this project.\n\nBefore doing ANYTHING:\n1. Read the entire file and explain what it is — is this CLAUDE.md (project instructions), settings.json (project settings), or settings.local.json (local overrides)?\n2. Explain in plain language what EVERY setting/instruction in this file does\n3. Explain exactly what will change after removal:\n   - If CLAUDE.md: all project-specific instructions, coding conventions, and custom rules will be lost. Claude Code will behave generically.\n   - If settings.json: project-level permission overrides, model preferences, and tool settings will revert to defaults.\n   - If settings.local.json: local environment overrides (API keys, personal preferences) will be lost.\n4. List everything that depends on or references this file\n5. Ask me: "Are you sure you want to remove this? Here is what you will lose: [list]. Type YES to confirm."\n6. Only remove after I type YES — do not proceed on any other response` });
-      break;
-    case "hook":
-      buttons.push({ ico: "💡", label: "", prompt: null, info: "Hooks run automatically on Claude Code events. Use these prompts to understand or modify them safely." });
-      buttons.push({ ico: "📋", label: "Explain This", prompt: `I have a Claude Code hook: "${item.name}"\nPath: ${item.path}\n\nPlease explain:\n1. What event triggers this hook?\n2. What does the hook script do?\n3. What would happen if I disabled or removed it?\n4. Is the hook script working correctly? Check if the script exists and is executable.` });
-      buttons.push({ ico: "✏️", label: "Modify", prompt: `I want to modify this Claude Code hook: "${item.name}"\nPath: ${item.path}\n\nBefore changing:\n1. Read the hook config and the script it runs\n2. Explain when it triggers and what it does\n3. Ask me what I want to change\n4. Show the before vs after diff\n5. Warn about any side effects (e.g. breaking pre-commit checks)\n6. Only apply after I confirm` });
-      buttons.push({ ico: "🗑️", label: "Remove", prompt: `I want to remove this Claude Code hook: "${item.name}"\nPath: ${item.path}\n\nBefore removing:\n1. Read the hook and explain what it does\n2. Tell me what behavior will stop after removal\n3. Check if other hooks or configs depend on it\n4. Only remove after I explicitly confirm` });
-      break;
-    case "plugin":
-      buttons.push({ ico: "💡", label: "", prompt: null, info: "Plugins extend Claude Code's capabilities. Use these prompts to understand or manage them." });
-      buttons.push({ ico: "📋", label: "Explain This", prompt: `I have a Claude Code plugin: "${item.name}"\nPath: ${item.path}\n\nPlease explain:\n1. What does this plugin do?\n2. What features or commands does it add?\n3. Is it actively loaded by Claude Code?\n4. What would change if I removed it?` });
-      buttons.push({ ico: "🗑️", label: "Remove", prompt: `I want to remove this Claude Code plugin: "${item.name}"\nPath: ${item.path}\n\nBefore removing:\n1. Explain what features this plugin provides\n2. Check if any skills, hooks, or configs reference it\n3. Tell me what will stop working after removal\n4. Only remove after I explicitly confirm` });
-      break;
-    default:
-      buttons.push({ ico: "📋", label: "Explain This", prompt: explainPrompt });
-      break;
+  const rawActions = [];
+  if (!item.locked && item.category !== "session" && prompts.common?.unlockedInfo) {
+    rawActions.push(prompts.common.unlockedInfo);
   }
+  rawActions.push(...(prompts.categories[item.category] || prompts.categories.default || []));
+
+  const context = getPromptContext(item);
+  const buttons = rawActions
+    .map((action) => resolvePromptAction(action, prompts))
+    .filter((action) => shouldShowPromptAction(action, item))
+    .map((action) => ({
+      ...action,
+      ico: action.ico || action.icon || "📋",
+      info: renderPromptTemplate(action.info, context),
+      prompt: renderPromptTemplate(action.prompt, context),
+    }))
+    .filter((action) => action.info || action.prompt);
 
   if (buttons.length === 0) {
     container.classList.add("hidden");
@@ -1631,7 +1891,8 @@ function renderCcActions(item) {
     if (btn.info) {
       return `<div class="cc-info"><span class="cc-ico">${btn.ico}</span>${esc(btn.info)}</div>`;
     }
-    return `<button type="button" class="cc-btn" data-prompt="${esc(btn.prompt)}"><span class="cc-ico">${btn.ico}</span>${esc(btn.label)}</button>`;
+    const kind = btn.kind || btn.id || btn.label || "";
+    return `<button type="button" class="cc-btn" data-kind="${esc(kind)}" data-prompt="${esc(btn.prompt)}"><span class="cc-ico">${btn.ico}</span>${esc(btn.label)}</button>`;
   }).join("");
 }
 
@@ -1642,8 +1903,8 @@ function setupCcActions() {
     const prompt = btn.dataset.prompt;
     navigator.clipboard.writeText(prompt).then(() => {
       const orig = btn.innerHTML;
-      const isResume = prompt.startsWith("claude --resume");
-      const msg = isResume ? "Copied! Paste in a new terminal" : "Copied! Paste to Claude Code";
+      const isResume = btn.dataset.kind === "Resume Session" || prompt.includes(`${getHarnessExecutable()} --resume`);
+      const msg = isResume ? "Copied! Paste in a new terminal" : `Copied! Paste to ${getHarnessName()}`;
       btn.innerHTML = `<span class="cc-ico">✅</span>${msg}`;
       setTimeout(() => { btn.innerHTML = orig; }, 2500);
     });
@@ -1665,18 +1926,13 @@ function timeAgo(isoString) {
   return `${Math.round(diff / 86400)} d ago`;
 }
 
-const PILL_CATEGORIES = [
-  "session", "memory", "skill", "mcp", "setting", "rule",
-  "plan", "config", "agent", "hook", "command", "plugin",
-];
-
 function renderBackupPills(counts) {
   const container = document.getElementById("bkpPills");
   if (!counts || Object.keys(counts).length === 0) {
     container.innerHTML = `<span class="bkp-pill-loading">No data</span>`;
     return;
   }
-  container.innerHTML = PILL_CATEGORIES
+  container.innerHTML = getCategoryOrder()
     .filter(cat => (counts[cat] || 0) > 0)
     .map(cat => `
       <span class="bkp-pill bkp-pill-${cat}">
@@ -1704,6 +1960,7 @@ async function openBackupModal() {
   try {
     const status = await fetchJson("/api/backup/status");
     if (!status.ok) return;
+    if (status.backupDir) lastBackupFolder = `${status.backupDir}/latest`;
 
     // Header: last run
     const ago = timeAgo(status.lastRun);
@@ -1742,13 +1999,16 @@ async function openBackupModal() {
     // Schedule section
     const checkbox = document.getElementById("bkpSchedEnabled");
     const schedLabel = document.getElementById("bkpSchedEnabledLabel");
-    checkbox.checked = status.schedulerInstalled;
-    schedLabel.textContent = status.schedulerInstalled ? "Enabled" : "Not installed";
-    document.getElementById("bkpSchedBody").classList.toggle("disabled", !status.schedulerInstalled);
+    const schedulerSupported = status.schedulerSupported !== false;
+    checkbox.checked = schedulerSupported && status.schedulerInstalled;
+    schedLabel.textContent = schedulerSupported
+      ? (status.schedulerInstalled ? "Enabled" : "Not installed")
+      : "Unavailable";
+    document.getElementById("bkpSchedBody").classList.toggle("disabled", !schedulerSupported || !status.schedulerInstalled);
     document.getElementById("bkpSchedDesc").textContent =
-      status.schedulerInstalled ? `Every ${status.interval || 4} hours + on boot` : "Not running";
+      !schedulerSupported ? "Manual backups only" : status.schedulerInstalled ? `Every ${status.interval || 4} hours + on boot` : "Not running";
     document.getElementById("bkpSchedNext").textContent =
-      status.schedulerInstalled ? "Background scheduler active" : "";
+      !schedulerSupported ? "Use Back Up Now or Sync Now for this harness" : status.schedulerInstalled ? "Background scheduler active" : "";
 
     // Set interval selector to current value
     const sel = document.getElementById("bkpInterval");
@@ -1871,7 +2131,7 @@ function setupBackupModal() {
 
   // ── Open Backup Folder ──
   document.getElementById("bkpOpenFolder").addEventListener("click", () => {
-    toast("Backup folder: ~/.claude-backups/latest", false, null, true);
+    toast(`Backup folder: ${lastBackupFolder}`, false, null, true);
   });
 
   // ── Configure Remote (inline edit) ──
@@ -1949,6 +2209,7 @@ function setupBackupModal() {
 
 function setupContextBudget() {
   document.getElementById("ctxBudgetBtn").addEventListener("click", () => {
+    if (!hasCapability("contextBudget")) return;
     if (!selectedScopeId) {
       toast("Select a scope first", true);
       return;
@@ -1959,6 +2220,7 @@ function setupContextBudget() {
   document.getElementById("ctxBudgetClose").addEventListener("click", closeContextBudget);
 
   document.getElementById("inheritToggleBtn")?.addEventListener("click", () => {
+    if (!hasCapability("effective")) return;
     const scope = getScopeById(selectedScopeId);
     if (!scope || scope.id === "global") return;
     showEffective = !showEffective;
@@ -1969,6 +2231,7 @@ function setupContextBudget() {
 }
 
 function openContextBudget(scopeId) {
+  if (!hasCapability("contextBudget")) return;
   // Hide item detail panel, show context budget panel
   document.getElementById("detailPanel").classList.add("hidden");
   const panel = document.getElementById("ctxBudgetPanel");
@@ -2235,10 +2498,10 @@ function renderByCategory(allItems) {
     byCategory[cat].push(item);
   }
 
-  for (const cat of CATEGORY_ORDER) {
+  for (const cat of getCategoryOrder()) {
     const catItems = byCategory[cat];
     if (!catItems) continue;
-    const catInfo = CATEGORIES[cat] || { icon: "📄", label: cat };
+    const catInfo = getCategoryConfig(cat);
     const catTotal = catItems.reduce((sum, i) => sum + i.tokens, 0);
 
     html += `<div class="ctx-section">
@@ -2269,7 +2532,7 @@ function renderByTokens(allItems) {
     </div>
     <div class="ctx-section-items">
       ${sorted.map(item => {
-        const catInfo = CATEGORIES[item.category] || { icon: "📄" };
+        const catInfo = getCategoryConfig(item.category);
         return renderBudgetItem(item, catInfo.icon, true);
       }).join("")}
     </div>
@@ -2286,10 +2549,10 @@ function renderItemsByCategory(items, showSource) {
   }
 
   let html = "";
-  for (const cat of CATEGORY_ORDER) {
+  for (const cat of getCategoryOrder()) {
     const catItems = byCategory[cat];
     if (!catItems) continue;
-    const catInfo = CATEGORIES[cat] || { icon: "📄", label: cat };
+    const catInfo = getCategoryConfig(cat);
     const catTotal = catItems.reduce((sum, i) => sum + i.tokens, 0);
 
     html += `<div class="ctx-cat-group">
@@ -2329,7 +2592,7 @@ function renderBreadcrumb(scope) {
   if (!scope) return `<span class="crumb-pill">Unknown scope</span>`;
   const scopes = [...getScopeChain(scope), scope];
   return scopes.map((entry, index) => {
-    const icon = SCOPE_ICONS[entry.type] || "📂";
+    const icon = getScopeIcon(entry.type);
     const sep = index === scopes.length - 1 ? "" : `<span class="crumb-sep">›</span>`;
     return `<span class="crumb-pill">${icon} ${esc(entry.name)}</span>${sep}`;
   }).join("");
@@ -2421,6 +2684,42 @@ function initSortable() {
   });
 }
 
+function getMovePrompt(item, toScopeId, includeSource = false) {
+  const moveTemplates = getPromptTemplates()?.move || {};
+  const template = includeSource ? moveTemplates.withSourceScope : moveTemplates.withoutSourceScope;
+  const fromScope = getScopeById(item.scopeId);
+  const toScope = getScopeById(toScopeId);
+  const fallback = includeSource
+    ? `I want to move this {{harnessName}} {{category}} to a different scope.
+
+Item: "{{name}}"
+Current path: {{path}}
+From scope: {{fromScopeName}}
+Move to scope: {{toScopeName}}
+
+Before moving, explain what will change and only move after I confirm.`
+    : `I want to move this {{harnessName}} {{category}} to a different scope.
+
+Item: "{{name}}"
+Current path: {{path}}
+Move to scope: {{destName}}
+
+Before moving, explain what will change and only move after I confirm.`;
+
+  return renderPromptTemplate(template || fallback, getPromptContext(item, {
+    destName: toScope?.name || toScopeId,
+    fromScopeName: fromScope?.name || item.scopeId,
+    toScopeName: toScope?.name || toScopeId,
+  }));
+}
+
+function copyMovePrompt(item, toScopeId, includeSource = false) {
+  const prompt = getMovePrompt(item, toScopeId, includeSource);
+  navigator.clipboard.writeText(prompt).then(() => {
+    toast(`Move prompt copied! Paste to ${getHarnessName()} in your terminal.`);
+  });
+}
+
 function setupScopeDropZones() {
   // Drag-and-drop disabled — use Move button instead.
   return;
@@ -2457,13 +2756,8 @@ function setupScopeDropZones() {
     const item = draggingItem;
 
     if (item.locked) {
-      // Locked item — generate CC prompt
-      const destScope = getScopeById(scopeId);
-      const fromScope = getScopeById(item.scopeId);
-      const prompt = `I want to move this Claude Code ${item.category} to a different scope.\n\nItem: "${item.name}"\nCurrent path: ${item.path}\nFrom scope: ${fromScope?.name || item.scopeId}\nMove to scope: ${destScope?.name || scopeId}\n\nBefore moving:\n1. Read the file and understand what it does\n2. Determine the correct destination path for the "${destScope?.name || scopeId}" scope\n3. Check if a ${item.category} with the same name already exists at the destination\n4. Explain what will change — which projects will gain or lose access to this ${item.category}\n5. Warn me about any potential conflicts or breaking changes\n6. Only move the file after I confirm`;
-      navigator.clipboard.writeText(prompt).then(() => {
-        toast("Move prompt copied! Paste to Claude Code in your terminal.");
-      });
+      // Locked item — generate harness prompt
+      copyMovePrompt(item, scopeId, true);
       draggingItem = null;
       return;
     }
@@ -2555,7 +2849,7 @@ async function loadPreview(item) {
       return;
     }
 
-    if (item.category === "session") {
+    if (isSessionTranscript(item)) {
       const res = await fetchJson(`/api/session-preview?path=${encodeURIComponent(item.path)}`);
       if (currentKey !== detailPreviewKey) return;
       if (!res.ok) { preview.textContent = "Cannot load session preview"; return; }
@@ -2597,12 +2891,12 @@ function closeDetail() {
 }
 
 function showDragConfirm(item, fromScope, toScope) {
-  const fromIcon = SCOPE_ICONS[fromScope?.type] || "📂";
-  const toIcon = SCOPE_ICONS[toScope?.type] || "📂";
+  const fromIcon = getScopeIcon(fromScope?.type);
+  const toIcon = getScopeIcon(toScope?.type);
 
   document.getElementById("dcPreview").innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-      <span style="font-size:1.1rem;">${ITEM_ICONS[item.category] || "📄"}</span>
+      <span style="font-size:1.1rem;">${getCategoryConfig(item.category).icon || "📄"}</span>
       <div>
         <div style="font-weight:900;color:var(--text-primary);font-size:0.9rem;">${esc(item.name)}</div>
         <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">
@@ -2641,7 +2935,7 @@ function openDeleteModal(item) {
 
   document.getElementById("deletePreview").innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-      <span style="font-size:1.1rem;">${ITEM_ICONS[item.category] || "📄"}</span>
+      <span style="font-size:1.1rem;">${getCategoryConfig(item.category).icon || "📄"}</span>
       <div>
         <div style="font-weight:900;color:var(--text-primary);font-size:0.9rem;">${esc(item.name)}</div>
         <div style="font-size:0.68rem;color:var(--text-muted);margin-top:2px;">${esc(scope?.name || item.scopeId)} · ${esc(item.category)}</div>
@@ -2749,13 +3043,8 @@ async function openMoveModal(item) {
     if (!selectedDest) return;
     closeMoveModal();
     if (item.locked) {
-      // Locked item — generate CC prompt instead of API call
-      const destScope = getScopeById(selectedDest);
-      const destName = destScope?.name || selectedDest;
-      const prompt = `I want to move this Claude Code ${item.category} to a different scope.\n\nItem: "${item.name}"\nCurrent path: ${item.path}\nMove to scope: ${destName}\n\nBefore moving:\n1. Read the file and understand what it does\n2. Determine the correct destination path for the "${destName}" scope\n3. Check if a ${item.category} with the same name already exists at the destination\n4. Explain what will change — which projects will gain or lose access to this ${item.category}\n5. Warn me about any potential conflicts or breaking changes\n6. Only move the file after I confirm`;
-      navigator.clipboard.writeText(prompt).then(() => {
-        toast("Move prompt copied! Paste to Claude Code in your terminal.");
-      });
+      // Locked item — generate harness prompt instead of API call
+      copyMovePrompt(item, selectedDest);
     } else {
       await doMove(item, selectedDest);
     }
@@ -2862,7 +3151,7 @@ function buildOrderedScopeEntries(destinations, currentScopeId) {
 
 function renderDestinationRow(scope) {
   const indent = scope.depth > 0 ? ` style="padding-left:${scope.depth * 28}px"` : "";
-  const icon = scope.id === "global" ? "🌐" : (SCOPE_ICONS[scope.type] || "📂");
+  const icon = scope.id === "global" ? (getScopeTypeConfig(scope.type)?.icon || "🌐") : getScopeIcon(scope.type);
   const currentLabel = scope.isCurrent
     ? ' <span style="font-size:0.6rem;color:var(--text-faint);margin-left:4px;">(current)</span>'
     : "";
@@ -2910,7 +3199,7 @@ async function doMove(itemRef, toScopeId, skipRefresh = false) {
   if (!item) return { ok: false, error: "Item not found" };
 
   const fromScopeId = item.scopeId;
-  const response = await fetch("/api/move", {
+  const response = await fetch(apiUrl("/api/move"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -2933,7 +3222,7 @@ async function doMove(itemRef, toScopeId, skipRefresh = false) {
     }
 
     const undoFn = async () => {
-      const undoResult = await fetch("/api/move", {
+      const undoResult = await fetch(apiUrl("/api/move"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2986,7 +3275,7 @@ async function doDelete(itemRef, skipRefresh = false) {
     // best effort backup only
   }
 
-  const response = await fetch("/api/delete", {
+  const response = await fetch(apiUrl("/api/delete"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -3008,7 +3297,7 @@ async function doDelete(itemRef, skipRefresh = false) {
     let undoFn = null;
     if (mcpBackup) {
       undoFn = async () => {
-        const restoreResult = await fetch("/api/restore-mcp", {
+        const restoreResult = await fetch(apiUrl("/api/restore-mcp"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(mcpBackup),
@@ -3023,7 +3312,7 @@ async function doDelete(itemRef, skipRefresh = false) {
       };
     } else if (backupContent) {
       undoFn = async () => {
-        const restoreResult = await fetch("/api/restore", {
+        const restoreResult = await fetch(apiUrl("/api/restore"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -3186,14 +3475,14 @@ function getRecursiveScopeCount(scopeId) {
 
 function getSidebarCategoryCounts(scopeId) {
   const counts = new Map();
-  for (const category of CATEGORY_ORDER) counts.set(category, 0);
+  for (const category of getCategoryOrder()) counts.set(category, 0);
 
   for (const item of getItemsForScope(scopeId)) {
     if (searchQuery && !itemMatchesSearch(item)) continue;
     counts.set(item.category, (counts.get(item.category) || 0) + 1);
   }
 
-  return CATEGORY_ORDER
+  return getCategoryOrder()
     .map((category) => ({ category, count: counts.get(category) || 0 }))
     .filter((entry) => entry.count > 0);
 }
@@ -3240,7 +3529,7 @@ function findVisibleScopeInTree(scope) {
  * then stores results in app-level state (effectiveShadowedKeys etc).
  */
 function computeEffectiveSets(scopeId) {
-  if (!showEffective || !scopeId || scopeId === "global") {
+  if (!hasCapability("effective") || !showEffective || !scopeId || scopeId === "global") {
     effectiveShadowedKeys = new Set();
     effectiveConflictKeys = new Set();
     effectiveAncestorKeys = new Set();
@@ -3254,7 +3543,7 @@ function computeEffectiveSets(scopeId) {
 
 function getVisibleItemsForScope(scopeId) {
   const ownItems = getItemsForScope(scopeId).filter((item) => itemVisibleInMain(item));
-  if (!showEffective || scopeId === "global") return ownItems;
+  if (!hasCapability("effective") || !showEffective || scopeId === "global") return ownItems;
 
   // Use shared module for effective resolution, then apply UI filters
   const allEffective = getEffectiveItems(scopeId, data?.items || [], data?.scopes || []);
@@ -3289,16 +3578,17 @@ function itemMatchesSearch(item) {
 function sortCategoryItems(category, items) {
   const catKey = `${selectedScopeId}::${category}`;
   const sortState = uiState.sortBy[catKey];
+  const sortDefault = getCategoryConfig(category).sortDefault;
 
   let sorted = [...items];
 
   // Default sort for sessions: newest first
-  if (!sortState && category === "session") {
+  if (!sortState && sortDefault === "date") {
     return sorted.sort((a, b) => (b.mtime || "").localeCompare(a.mtime || ""));
   }
 
   // Default sort for memory: by subType then name
-  if (!sortState && category === "memory") {
+  if (!sortState && sortDefault === "subType") {
     const order = { project: 0, reference: 1, user: 2, feedback: 3 };
     return sorted.sort((a, b) => {
       const aOrder = order[a.subType] ?? 99;
@@ -3326,11 +3616,15 @@ function sortArrow(catKey, field) {
 }
 
 function canMoveItem(item) {
-  return !item.locked && ["memory", "skill", "mcp", "plan", "command", "agent", "rule"].includes(item.category);
+  if (item.locked) return false;
+  const config = getCategoryConfig(item.category);
+  return config.movable === true;
 }
 
 function canDeleteItem(item) {
-  return !item.locked;
+  if (item.locked) return false;
+  const config = getCategoryConfig(item.category);
+  return config.deletable !== false;
 }
 
 function itemKey(item) {
@@ -3369,8 +3663,9 @@ function renderSessionChat(res) {
   for (const msg of messages) {
     const isUser = msg.role === "user";
     const roleClass = isUser ? "chat-user" : "chat-assistant";
-    const roleLabel = isUser ? "You" : "Claude";
-    const avatar = isUser ? "U" : "C";
+    const assistantName = getHarnessShortName();
+    const roleLabel = isUser ? "You" : assistantName;
+    const avatar = isUser ? "U" : assistantName.slice(0, 1).toUpperCase();
 
     let body = esc(msg.text || "");
     // Basic markdown-ish: **bold**, `code`, ```blocks```
@@ -3491,6 +3786,7 @@ function showMcpDisableConfirm(scope, mcpName) {
 }
 
 async function openMcpControlsPanel() {
+  if (!hasCapability("mcpControls")) return;
   const panel = document.getElementById("mcpControlsPanel");
   panel.classList.remove("hidden");
 
@@ -3593,6 +3889,7 @@ function setupMcpControls() {
   const btn = document.getElementById("mcpControlsBtn");
   if (!btn) return;
   btn.addEventListener("click", () => {
+    if (!hasCapability("mcpControls")) return;
     document.getElementById("ctxBudgetPanel")?.classList.add("hidden");
     document.getElementById("securityPanel")?.classList.add("hidden");
     closeDetail();
@@ -3753,7 +4050,7 @@ async function runSecurityScan() {
     progressBar.style.width = "20%";
     progressText.textContent = "Fetching tool definitions from MCP servers...";
 
-    const resp = await fetch("/api/security-scan", { method: "POST" });
+    const resp = await fetch(apiUrl("/api/security-scan"), { method: "POST" });
     const scanData = await resp.json();
 
     progressBar.style.width = "90%";
@@ -4012,7 +4309,7 @@ function getPersistableSecurityScanData(scanData) {
 
 /** Save security scan results to server for persistence across sessions. */
 function saveSecurityResults(scanData) {
-  fetch("/api/security-cache", {
+  fetch(apiUrl("/api/security-cache"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(getPersistableSecurityScanData(scanData)),
@@ -4022,7 +4319,7 @@ function saveSecurityResults(scanData) {
 /** Load cached security scan results from server on startup. */
 async function loadCachedSecurityResults() {
   try {
-    const resp = await fetch("/api/security-cache");
+    const resp = await fetch(apiUrl("/api/security-cache"));
     const cached = await resp.json();
     if (!cached.ok || !cached.data) return;
 
@@ -4073,7 +4370,7 @@ async function loadCachedSecurityResults() {
 /** Check for new MCP servers on startup (no scan needed, just compare names against baselines). */
 async function checkForNewMcpServers() {
   try {
-    const resp = await fetch("/api/security-baseline-check");
+    const resp = await fetch(apiUrl("/api/security-baseline-check"));
     const result = await resp.json();
     if (!result.ok) return;
 

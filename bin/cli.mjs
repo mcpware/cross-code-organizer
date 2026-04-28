@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * cli.mjs — Entry point for Claude Code Organizer.
+ * cli.mjs — Entry point for Cross-Code Organizer (CCO).
  * Usage:
  *   node bin/cli.mjs              → Start web dashboard (HTTP server)
  *   node bin/cli.mjs --mcp        → Start MCP server (stdio, for AI clients)
@@ -48,11 +48,11 @@ if (!isMcpMode) {
       await writeFile(skillFile, [
         '---',
         'name: cco',
-        'description: Open Claude Code Organizer dashboard to manage memories, skills, MCP servers across scopes',
+        'description: Open Cross-Code Organizer (CCO) dashboard to manage memories, skills, MCP servers across scopes',
         'model: haiku',
         '---',
         '',
-        '1. Run `npx @mcpware/claude-code-organizer@latest` in background',
+        '1. Run `npx @mcpware/cross-code-organizer@latest` in background',
         '2. Wait 3 seconds for the server to start',
         '3. Open the browser: `xdg-open http://localhost:3847` (Linux) or `open http://localhost:3847` (macOS)',
         '4. Always tell the user: **http://localhost:3847**',
@@ -75,7 +75,7 @@ async function checkForUpdate() {
     const pkg = require('../package.json');
     const localVersion = pkg.version;
 
-    const resp = await fetch('https://registry.npmjs.org/@mcpware/claude-code-organizer/latest', { signal: AbortSignal.timeout(3000) });
+    const resp = await fetch('https://registry.npmjs.org/@mcpware/cross-code-organizer/latest', { signal: AbortSignal.timeout(3000) });
     if (!resp.ok) return null;
     const data = await resp.json();
     const latestVersion = data.version;
@@ -88,10 +88,10 @@ async function checkForUpdate() {
 }
 
 if (isDistillMode) {
-  // CLI distill mode: npx @mcpware/claude-code-organizer --distill <session.jsonl>
+  // CLI distill mode: npx @mcpware/cross-code-organizer --distill <session.jsonl>
   const sessionPath = args[distillIdx + 1];
   if (!sessionPath || !sessionPath.endsWith('.jsonl')) {
-    console.error('\n  Usage: npx @mcpware/claude-code-organizer --distill <session.jsonl>\n');
+    console.error('\n  Usage: npx @mcpware/cross-code-organizer --distill <session.jsonl>\n');
     process.exit(1);
   }
   const { resolve } = await import('node:path');
@@ -100,7 +100,7 @@ if (isDistillMode) {
   try {
     const r = await distillSession(resolve(sessionPath));
     const s = r.stats;
-    console.log(`\n  Session Distiller — by @mcpware/claude-code-organizer`);
+    console.log(`\n  Session Distiller — by @mcpware/cross-code-organizer`);
     console.log(`  ─────────────────────────────────────────────────────`);
     console.log(`  Backup:    ${r.backupPath} (${fmt(s.backupBytes)})`);
     console.log(`  Distilled: ${r.outputPath} (${fmt(s.outputBytes)}, ${s.reduction} reduction)`);
@@ -132,15 +132,17 @@ if (isDistillMode) {
   updatePromise.then(update => {
     if (update) {
       console.log(`\n  📦 New version available! You're not on the latest.`);
-      console.log(`     Run: npx @mcpware/claude-code-organizer@latest`);
-      console.log(`     Or:  npm update -g @mcpware/claude-code-organizer\n`);
+      console.log(`     Run: npx @mcpware/cross-code-organizer@latest`);
+      console.log(`     Or:  npm update -g @mcpware/cross-code-organizer\n`);
     }
   });
 
-  try {
-    const openCmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
-    execSync(`${openCmd} http://localhost:${port}`, { stdio: 'ignore' });
-  } catch {
-    // Browser didn't open, user can navigate manually
+  if (!args.includes('--no-open') && process.env.CCO_NO_OPEN !== '1') {
+    try {
+      const openCmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
+      execSync(`${openCmd} http://localhost:${port}`, { stdio: 'ignore' });
+    } catch {
+      // Browser didn't open, user can navigate manually
+    }
   }
 }

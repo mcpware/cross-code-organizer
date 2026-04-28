@@ -157,8 +157,51 @@ body {
   flex-shrink: 0;
 }
 
-.sidebar-logo svg { width: 16px; height: 16px; }
+.harness-logo-icon {
+  color: #fff;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.harness-logo-icon svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
 .sidebar-title { font-size: 0.95rem; font-weight: 900; color: var(--sidebar-text-bright); letter-spacing: -0.3px; }
+
+.harness-selector-wrap {
+  margin: 10px 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.harness-selector-label {
+  font-size: 0.58rem;
+  font-weight: 900;
+  color: var(--sidebar-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.harness-selector {
+  width: 100%;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid var(--sidebar-border);
+  background: oklch(0.18 0.03 185);
+  color: var(--sidebar-text-bright);
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  outline: none;
+  padding: 0 9px;
+}
+
+.harness-selector:focus { border-color: var(--accent); }
+.harness-selector:disabled { opacity: 0.7; }
+.dark .harness-selector { background: oklch(0.10 0.02 185); }
 
 .sidebar-search {
   margin: 10px 12px;
@@ -278,7 +321,7 @@ body {
   text-align: center;
 }
 .update-banner:hover { background: oklch(0.30 0.07 80) !important; cursor: pointer; }
-.update-banner::after { content: "Click to copy update command — paste into Claude Code"; display: block; font-size: 0.55rem; opacity: 0; transition: opacity 150ms; margin-top: 2px; color: #d4c080; }
+.update-banner::after { content: "Click to copy update command"; display: block; font-size: 0.55rem; opacity: 0; transition: opacity 150ms; margin-top: 2px; color: #d4c080; }
 .update-banner:hover::after { opacity: 1; }
 .update-banner code { background: oklch(0.20 0.04 80); padding: 1px 5px; border-radius: 3px; font-size: 0.6rem; }
 .scope-notice {
@@ -1156,6 +1199,8 @@ body {
 .d-item-input { width: 100%; box-sizing: border-box; }
 .d-item-input::placeholder { color: var(--text-faint); font-size: 0.72rem; }
 .d-item-number { width: 80px; }
+.d-item-textarea { min-height: 72px; resize: vertical; line-height: 1.4; }
+.d-item-readonly { color: var(--text-secondary); background: var(--surface-inset); }
 
 /* Collapsible metadata toggle */
 .d-meta-toggle { font-size: 0.7rem; font-weight: 600; color: var(--text-faint); cursor: pointer; padding: 6px 0 2px; user-select: none; letter-spacing: 0.3px; text-transform: uppercase; }
