@@ -1,4 +1,4 @@
-# Contributing to Claude Code Organizer
+# Contributing to Cross-Code Organizer (CCO)
 
 Thanks for your interest in contributing! This project is maintained by [@ithiria894](https://github.com/ithiria894).
 
@@ -6,8 +6,8 @@ Thanks for your interest in contributing! This project is maintained by [@ithiri
 
 ```bash
 # Fork and clone
-git clone https://github.com/YOUR_USERNAME/claude-code-organizer.git
-cd claude-code-organizer
+git clone https://github.com/YOUR_USERNAME/cross-code-organizer.git
+cd cross-code-organizer
 
 # Install dependencies
 npm install
@@ -58,7 +58,7 @@ All project scopes inherit directly from Global. There is no intermediate scope 
 
 ## What to Work On
 
-- Check [open issues](https://github.com/mcpware/claude-code-organizer/issues) for bugs and feature requests
+- Check [open issues](https://github.com/mcpware/cross-code-organizer/issues) for bugs and feature requests
 - Issues labeled `good first issue` are great starting points
 - If you want to work on something not listed, open an issue first to discuss
 
@@ -94,7 +94,7 @@ npm run test:headed
 
 ## Reporting Issues
 
-- Use [GitHub Issues](https://github.com/mcpware/claude-code-organizer/issues)
+- Use [GitHub Issues](https://github.com/mcpware/cross-code-organizer/issues)
 - Include your OS, Node.js version, and Claude Code version
 - For bugs, include steps to reproduce
 

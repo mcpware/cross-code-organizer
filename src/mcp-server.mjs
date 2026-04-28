@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * MCP server layer for Claude Code Organizer.
+ * MCP server layer for Cross-Code Organizer (CCO).
  * Wraps existing scan/move/delete functions as MCP tools
  * so AI clients (Claude, Cursor, Windsurf) can discover and call them.
  */
@@ -27,7 +27,7 @@ const categoryEnum = z.enum(categoryEnumValues);
 const categoryDescription = `Category of item (${categoryList})`;
 
 const server = new McpServer({
-  name: 'claude-code-organizer',
+  name: 'cross-code-organizer',
   version: '0.5.0',
 });
 

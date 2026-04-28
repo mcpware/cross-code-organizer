@@ -1,6 +1,6 @@
 ---
 name: organize
-description: Open the Claude Code Organizer dashboard to view and manage memories, skills, MCP servers, and hooks across all scopes.
+description: Open the Cross-Code Organizer (CCO) dashboard to view and manage memories, skills, MCP servers, and hooks across all scopes.
 argument-hint: "[port]"
 ---
 
@@ -18,7 +18,7 @@ Launch the visual dashboard to see and manage your entire Claude Code setup.
 ## How to use
 
 ```bash
-npx @mcpware/claude-code-organizer
+npx @mcpware/cross-code-organizer
 ```
 
 This starts a local web dashboard. Open the URL shown in the terminal.

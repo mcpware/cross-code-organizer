@@ -1,5 +1,5 @@
 /**
- * server.mjs — HTTP server for Claude Code Organizer.
+ * server.mjs — HTTP server for Cross-Code Organizer (CCO).
  * Routes only. All logic is in scanner.mjs and mover.mjs.
  * All UI is in src/ui/ (html, css, js).
  */
@@ -29,7 +29,7 @@ async function checkForUpdate() {
   const require = createRequire(import.meta.url);
   const { version: local } = require("../package.json");
   const data = await new Promise((resolve, reject) => {
-    const req = https.get("https://registry.npmjs.org/@mcpware/claude-code-organizer/latest", { timeout: 3000 }, (res) => {
+    const req = https.get("https://registry.npmjs.org/@mcpware/cross-code-organizer/latest", { timeout: 3000 }, (res) => {
       let body = "";
       res.on("data", (c) => (body += c));
       res.on("end", () => resolve(body));
@@ -39,7 +39,7 @@ async function checkForUpdate() {
   });
   const { version: latest } = JSON.parse(data);
   if (latest && latest !== local) {
-    console.log(`\uD83D\uDCE6 Update available: ${local} \u2192 ${latest}  Run: npm update -g @mcpware/claude-code-organizer\n`);
+    console.log(`\uD83D\uDCE6 Update available: ${local} \u2192 ${latest}  Run: npm update -g @mcpware/cross-code-organizer\n`);
   }
 }
 
@@ -181,7 +181,7 @@ async function handleRequest(req, res) {
     const { version: local } = require("../package.json");
     try {
       const data = await new Promise((resolve, reject) => {
-        const req = https.get("https://registry.npmjs.org/@mcpware/claude-code-organizer/latest", { timeout: 3000 }, (res) => {
+        const req = https.get("https://registry.npmjs.org/@mcpware/cross-code-organizer/latest", { timeout: 3000 }, (res) => {
           let body = "";
           res.on("data", (c) => (body += c));
           res.on("end", () => resolve(body));
@@ -1066,7 +1066,7 @@ export function startServer(port = 3847, maxRetries = 10) {
       console.log(hadClientEver
         ? "\nAll browser tabs closed. Shutting down."
         : "\nNo browser connected within 5 minutes. Shutting down.");
-      console.log("Run again anytime with /cco or npx @mcpware/claude-code-organizer\n");
+      console.log("Run again anytime with /cco or npx @mcpware/cross-code-organizer\n");
       process.exit(0);
     }, ms);
   }
@@ -1113,11 +1113,11 @@ export function startServer(port = 3847, maxRetries = 10) {
   let attempt = 0;
   function tryListen(p) {
     server.listen(p, () => {
-      console.log(`\nClaude Code Organizer running at http://localhost:${p}\n`);
+      console.log(`\nCross-Code Organizer (CCO) running at http://localhost:${p}\n`);
       console.log(`Made by a CS dropout with no mass, no team, no budget \u2014 just Claude Code and ADHD.`);
       console.log(`This is my first open-source project. If it helped you, a star would make my week:`);
-      console.log(`\u2B50 https://github.com/mcpware/claude-code-organizer`);
-      console.log(`\uD83D\uDCEC Bugs, ideas, or just wanna say hi? https://github.com/mcpware/claude-code-organizer/issues \u2014 I fix things same day, I promise`);
+      console.log(`\u2B50 https://github.com/mcpware/cross-code-organizer`);
+      console.log(`\uD83D\uDCEC Bugs, ideas, or just wanna say hi? https://github.com/mcpware/cross-code-organizer/issues \u2014 I fix things same day, I promise`);
       console.log(`\nPress Ctrl+C to stop. Server auto-shuts down when you close all browser tabs.\n`);
       startIdleTimer(); // safety net in case no browser connects
       // Non-blocking update check

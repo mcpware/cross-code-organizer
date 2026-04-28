@@ -1,7 +1,7 @@
 {
-  "name": "@mcpware/claude-code-organizer",
+  "name": "@mcpware/cross-code-organizer",
   "version": "0.18.2",
-  "description": "Organize all your Claude Code memories, skills, MCP servers, commands, agents, rules, and hooks — see what loads globally vs per-project, then move items between scopes",
+  "description": "Cross-Code Organizer (CCO) manages AI coding harness memories, skills, MCP servers, commands, agents, rules, and hooks across global and project scopes",
   "type": "module",
   "files": [
     "bin/",
@@ -10,7 +10,7 @@
     "README.md"
   ],
   "bin": {
-    "claude-code-organizer": "./bin/cli.mjs"
+    "cross-code-organizer": "./bin/cli.mjs"
   },
   "scripts": {
     "start": "node bin/cli.mjs",
@@ -39,12 +39,12 @@
   "publishConfig": {
     "provenance": true
   },
-  "mcpName": "io.github.mcpware/claude-code-organizer",
+  "mcpName": "io.github.mcpware/cross-code-organizer",
   "author": "ithiria894",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mcpware/claude-code-organizer"
+    "url": "https://github.com/mcpware/cross-code-organizer"
   },
   "engines": {
     "node": ">=20"

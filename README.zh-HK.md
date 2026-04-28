@@ -1,21 +1,21 @@
-# Claude Code Organizer
+# Cross-Code Organizer (CCO)
 
-[![npm version](https://img.shields.io/npm/v/@mcpware/claude-code-organizer)](https://www.npmjs.com/package/@mcpware/claude-code-organizer)
-[![npm downloads](https://img.shields.io/npm/dt/@mcpware/claude-code-organizer?label=downloads)](https://www.npmjs.com/package/@mcpware/claude-code-organizer)
-[![GitHub stars](https://img.shields.io/github/stars/mcpware/claude-code-organizer)](https://github.com/mcpware/claude-code-organizer/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/mcpware/claude-code-organizer)](https://github.com/mcpware/claude-code-organizer/network/members)
+[![npm version](https://img.shields.io/npm/v/@mcpware/cross-code-organizer)](https://www.npmjs.com/package/@mcpware/cross-code-organizer)
+[![npm downloads](https://img.shields.io/npm/dt/@mcpware/cross-code-organizer?label=downloads)](https://www.npmjs.com/package/@mcpware/cross-code-organizer)
+[![GitHub stars](https://img.shields.io/github/stars/mcpware/cross-code-organizer)](https://github.com/mcpware/cross-code-organizer/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/mcpware/cross-code-organizer)](https://github.com/mcpware/cross-code-organizer/network/members)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org)
-[![Tests](https://img.shields.io/badge/tests-225%20passing-brightgreen)](https://github.com/mcpware/claude-code-organizer)
-[![Zero Telemetry](https://img.shields.io/badge/telemetry-zero-blue)](https://github.com/mcpware/claude-code-organizer)
-[![MCP Security](https://img.shields.io/badge/MCP-Security%20Scanner-red)](https://github.com/mcpware/claude-code-organizer)
+[![Tests](https://img.shields.io/badge/tests-225%20passing-brightgreen)](https://github.com/mcpware/cross-code-organizer)
+[![Zero Telemetry](https://img.shields.io/badge/telemetry-zero-blue)](https://github.com/mcpware/cross-code-organizer)
+[![MCP Security](https://img.shields.io/badge/MCP-Security%20Scanner-red)](https://github.com/mcpware/cross-code-organizer)
 [English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | 廣東話 | [日本語](README.ja.md) | [한국어](README.ko.md) | [Español](README.es.md) | [Bahasa Indonesia](README.id.md) | [Italiano](README.it.md) | [Português](README.pt-BR.md) | [Türkçe](README.tr.md) | [Tiếng Việt](README.vi.md) | [ไทย](README.th.md)
 
 **一個 dashboard 睇晒 Claude Code 實際 load 咗啲乜入 context — 掃有毒 MCP server、搵返浪費咗嘅 token、搬返擺錯位嘅 config。全部一個 window 搞掂。**
 
 > **私隱：** CCO 讀你本機嘅 Claude Code config 檔案（global 同 project 層面）。冇嘢會傳出去。零 telemetry。
 
-![Claude Code Organizer Demo](docs/demo.gif)
+![Cross-Code Organizer (CCO) Demo](docs/demo.gif)
 
 <sub>225 個 test（84 unit + 141 E2E）| 零依賴 | Demo 由 AI 用 [Pagecast](https://github.com/mcpware/pagecast) 錄</sub>
 
@@ -48,10 +48,10 @@
 **想即刻試？貼呢段入去 Claude Code：**
 
 ```
-Run npx @mcpware/claude-code-organizer and tell me the URL when it's ready.
+Run npx @mcpware/cross-code-organizer and tell me the URL when it's ready.
 ```
 
-或者自己跑：`npx @mcpware/claude-code-organizer`
+或者自己跑：`npx @mcpware/cross-code-organizer`
 
 > 第一次跑會自動裝個 `/cco` skill — 之後喺任何 Claude Code session 打 `/cco` 就得。
 
@@ -160,7 +160,7 @@ CCO 會連去每個 MCP server，攞返實際嘅 tool 定義，然後跑：
 | **Cost Tracker** | 💡 諗緊 | 追蹤每個 session、project 嘅 token 用量 |
 | **Relationship Graph** | 💡 諗緊 | 視覺化技能、hook 同 MCP server 之間嘅依賴 |
 
-有 idea？[開個 issue](https://github.com/mcpware/claude-code-organizer/issues) 傾吓。
+有 idea？[開個 issue](https://github.com/mcpware/cross-code-organizer/issues) 傾吓。
 
 ## 社區
 
@@ -183,4 +183,4 @@ MIT
 
 [ithiria894](https://github.com/ithiria894) — 幫 Claude Code 生態圈整工具嘅人。
 
-[![claude-code-organizer MCP server](https://glama.ai/mcp/servers/mcpware/claude-code-organizer/badges/card.svg)](https://glama.ai/mcp/servers/mcpware/claude-code-organizer)
+[![cross-code-organizer MCP server](https://glama.ai/mcp/servers/mcpware/cross-code-organizer/badges/card.svg)](https://glama.ai/mcp/servers/mcpware/cross-code-organizer)

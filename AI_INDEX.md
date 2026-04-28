@@ -152,7 +152,7 @@
 
 ## Packaging
 
-- Package: `@mcpware/claude-code-organizer`
+- Package: `@mcpware/cross-code-organizer`
 - Binary: `bin/cli.mjs`
 - npm payload: `bin/`, `src/`, `LICENSE`, `README.md`
 - Node: `>=20`

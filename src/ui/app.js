@@ -1,5 +1,5 @@
 /**
- * app.js — Frontend logic for Claude Code Organizer.
+ * app.js — Frontend logic for Cross-Code Organizer (CCO).
  *
  * Fetches data from /api/scan, renders the approved three-panel UI,
  * and keeps the existing search, filter, drag/drop, detail, bulk,
@@ -230,12 +230,12 @@ async function checkForUpdate() {
     if (!footer) return;
     const banner = document.createElement("div");
     banner.className = "update-banner";
-    banner.innerHTML = "🔄 New version available — <code>npx @mcpware/claude-code-organizer@latest</code>";
+    banner.innerHTML = "🔄 New version available — <code>npx @mcpware/cross-code-organizer@latest</code>";
     banner.addEventListener("click", () => {
-      navigator.clipboard.writeText("Run npx @mcpware/claude-code-organizer@latest to update Claude Code Organizer to the latest version.").then(() => {
+      navigator.clipboard.writeText("Run npx @mcpware/cross-code-organizer@latest to update Cross-Code Organizer (CCO) to the latest version.").then(() => {
         banner.innerHTML = "✅ Copied! Paste into Claude Code";
         setTimeout(() => {
-          banner.innerHTML = "🔄 New version available — <code>npx @mcpware/claude-code-organizer@latest</code>";
+          banner.innerHTML = "🔄 New version available — <code>npx @mcpware/cross-code-organizer@latest</code>";
         }, 2000);
       });
     });
@@ -393,11 +393,11 @@ function updateHarnessBranding() {
   const icon = harness.icon || "✳️";
   const executable = getHarnessExecutable();
 
-  document.title = `${name} Organizer`;
+  document.title = "Cross-Code Organizer (CCO)";
   const logo = document.getElementById("harnessLogoIcon");
   if (logo) logo.textContent = icon;
   const title = document.getElementById("sidebarTitle");
-  if (title) title.textContent = `${shortName} Organizer`;
+  if (title) title.textContent = "Cross-Code Organizer (CCO)";
   const loading = document.getElementById("loading");
   if (loading) loading.textContent = `Scanning ${name} inventory...`;
   const promptLabel = document.getElementById("detailPromptLabel");

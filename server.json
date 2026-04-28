@@ -1,16 +1,16 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.mcpware/claude-code-organizer",
+  "name": "io.github.mcpware/cross-code-organizer",
   "description": "Organize Claude Code memories, skills, MCP servers, commands, agents, rules via drag-and-drop.",
   "repository": {
-    "url": "https://github.com/mcpware/claude-code-organizer",
+    "url": "https://github.com/mcpware/cross-code-organizer",
     "source": "github"
   },
   "version": "0.10.2",
   "packages": [
     {
       "registryType": "npm",
-      "identifier": "@mcpware/claude-code-organizer",
+      "identifier": "@mcpware/cross-code-organizer",
       "version": "0.10.2",
       "transport": {
         "type": "stdio"

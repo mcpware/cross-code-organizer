@@ -1,5 +1,5 @@
 /**
- * E2E test suite for Claude Code Organizer.
+ * E2E test suite for Cross-Code Organizer (CCO).
  *
  * Philosophy (from gstack QA methodology):
  *   "100% test coverage is the key to great vibe coding.
