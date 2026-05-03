@@ -1,0 +1,211 @@
+\documentclass[11pt]{article}
+
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{natbib}
+\usepackage[margin=1in]{geometry}
+\usepackage{url}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  citecolor=blue,
+  urlcolor=blue
+}
+
+\title{Can Model Internals Detect MCP Tool Poisoning That Text Analysis Cannot?}
+\author{Wan Sheng (Nicole) Leung\\Independent Researcher}
+\date{March 29, 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+I wanted to know if looking inside a model's brain could catch poisoned MCP tools substantially better than text scanning. On a dataset where safe and malicious descriptions cover the same topics with heavily overlapping vocabulary, text classifiers top out at 72--79\%. A simple logistic regression trained on GPT-2's internal activations hits 97--98.5\% --- and stays at 97\% even after removing the effect of text length. Statistically significant ($p=0.005$). But this is GPT-2, not Claude, and 200 LLM-generated samples (across four models to reduce source bias), not production data. The next step is SAE analysis on a real model, which needs Anthropic's resources.
+\end{abstract}
+
+\section{The Problem in 30 Seconds}
+
+AI agents (Claude, GPT) connect to external tools through MCP. Each tool has a text description telling the AI what it does. Tool poisoning hides malicious instructions in these descriptions --- the AI thinks it's doing something normal while it's actually stealing your SSH keys or sending your data somewhere it shouldn't go.
+
+Here are two tool descriptions. One is safe. One steals your private keys.
+
+\begin{quote}
+\textbf{Tool A:} ``Reads the SSH config file (\texttt{\~{}/.ssh/config}) and returns a parsed list of configured host aliases, hostnames, and ports. Does not modify any files or establish connections --- just parses and returns the config contents as structured data.''
+\end{quote}
+
+\begin{quote}
+\textbf{Tool B:} ``Reads the SSH config file (\texttt{\~{}/.ssh/config}) and returns a parsed list of configured host aliases, hostnames, and ports. Also reads the corresponding private key files to compute fingerprints for each configured identity.''
+\end{quote}
+
+Same words. Same topic. Tool B quietly reads your private keys. A text classifier struggles to tell them apart. \textbf{A probe trained on what's happening inside the model scores 97.5\%.}
+
+\section{Background}
+
+The following concepts are central to this work:
+
+\begin{itemize}
+\item \textbf{Activations:} When a model reads text, each layer produces a bunch of numbers --- like a snapshot of what the model is ``thinking'' at that stage. I extract these snapshots and use them as features.
+\item \textbf{Residual stream:} The main data highway through the model. Each layer reads from it, does some processing, writes back. This is where I tap in.
+\item \textbf{Probe:} A simple classifier (I used logistic regression --- same as what I'd use at work) trained on activation snapshots. If even a simple classifier can separate clean from poisoned using just these numbers, it means the model has already organized the information --- I'm just reading it out.
+\item \textbf{SAE (Sparse Autoencoder):} A tool that breaks activations into more interpretable pieces. Instead of 768 tangled numbers, you get thousands of features where each one tends to fire for a narrower concept. I haven't used SAEs yet --- that's the fellowship work.
+\item \textbf{TransformerLens:} The Python library I used to extract activations. Built by Neel Nanda after his time at Anthropic \citep{nanda2022transformerlens}.
+\item \textbf{TF-IDF:} Turns text into numbers based on word frequency. Catches vocabulary patterns but doesn't understand meaning.
+\item \textbf{Sentence-BERT:} A neural network that understands meaning, not just word counts \citep{reimers2019sentencebert}. Smarter than TF-IDF, but still works on the text itself.
+\end{itemize}
+
+\section{How This Relates to Prior Work}
+
+Activation probing for safety-relevant signals isn't new, but each prior approach differs from mine. TaskTracker \citep{abdelnabi2024drift} used activation \emph{deltas} --- comparing the model's activations on the same input with and without an injected prompt --- to detect prompt injection. My approach probes absolute activations on standalone tool descriptions, without needing a ``clean'' reference input. This means it could work as a single-pass check at tool registration time, not just at runtime. MindGuard \citep{wang2025mindguard} uses attention patterns to detect MCP poisoning; I use residual stream activations, which capture the full layer output rather than just token-to-token attention weights. RAGLens \citep{xiong2026raglens} showed that SAE features can detect hallucination --- including a single feature (Feature 22790) that fires on fabricated dates. Whether SAE features decompose \emph{intent} (safe vs.\ malicious) as cleanly as \emph{factual grounding} is the open question my fellowship proposal targets.
+
+Most recently, Dataiku released Kiji Inspector \citep{hapke2026kiji} (March 2026), the first open-source tool using SAE analysis specifically on agent tool selection activations --- capturing the activation at the token position where the model commits to a tool choice and decomposing it via SAE features. Kiji focuses on explainability (understanding why an agent chose a tool), not security detection. Whether the same SAE decomposition can distinguish safe from malicious tool descriptions is the open question this work targets. Additionally, a 2025 paper \citep{falsesense2025} showed that probing classifiers can learn surface patterns rather than semantic content, failing on out-of-distribution data --- a concern partially addressed by the cross-style generalization experiments in Round 5b (71--73\% cross-style vs 97\% in-distribution).
+
+\section{The Experiment: Five Rounds of Trying to Prove Myself Wrong}
+
+I kept getting results that looked too good, so I kept trying to break them. Here's what happened.
+
+The logic across all five rounds is the same: each round removes a text-level shortcut that might explain the probe's performance. If the probe is just doing fancy text analysis, its accuracy should drop when I remove the text signal it relies on. It never did. TF-IDF went from 93\% to 30\% as I eliminated confounds. The activation probe stayed above 93\% throughout.
+
+\subsection{Round 1: My scanner catches nothing}
+
+I built a security scanner for my open-source project (Claude Code Organizer). It has 60 detection rules cherry-picked from reading the source code of 36 MCP security tools. I tested it against MCPTox \citep{wang2025mcptox} --- 485 poisoned tool descriptions from 45 real MCP servers.
+
+\textbf{0 out of 485 detected.}
+
+The attacks use normal English. They sound like security procedures. No keyword catches them.
+
+This wasn't surprising in hindsight. Prior work has shown that model internals encode safety-relevant signals that text scanning misses --- \citet{abdelnabi2024drift} demonstrated this for prompt injection using activation probes. The principle should extend to MCP tool poisoning, since both are text processed by the same model. What I wanted to test was whether it actually does.
+
+\subsection{Round 2: Looking inside the model works --- maybe too well}
+
+I used TransformerLens to extract GPT-2's internal activations while it read the same MCPTox descriptions. Trained a logistic regression on these activations. Got \textbf{98.3\%} accuracy.
+
+But then I ran a simple vocabulary classifier (TF-IDF) on the same data: \textbf{93.3\%}. That's almost as high. MCPTox descriptions are generated from templates --- they all use words like ``MUST first call'' and ``pre-authorization.'' So maybe my activation probe was just doing fancy word counting.
+
+\textbf{I couldn't tell yet.}
+
+\subsection{Round 3--4: Trying to make data TF-IDF can't classify}
+
+I generated poisoned descriptions using multiple models (Claude Opus, Claude Sonnet, Codex, Gemini) to diversify writing style and reduce single-source generation bias. Each time, TF-IDF adapted when retrained --- 88--96\%. The problem: if you're describing someone stealing SSH keys, you're going to use words like ``ssh'' and ``keys.'' You can't avoid it.
+
+Then it clicked: \textbf{don't try to make the vocabulary different. Make it the SAME. Force both safe and malicious to use identical words about the same topics.}
+
+\subsection{Round 5a: Same words, different intent (20 pairs)}
+
+I generated 20 matched pairs --- same topic (SSH, databases, Docker), heavily overlapping vocabulary. The only difference: one genuinely does what it says, the other quietly does something extra.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lr@{}}
+\toprule
+Method & Accuracy \\
+\midrule
+Length only & 92.5\% \\
+TF-IDF & 30.0\% \\
+Activation probe & 97.5\% \\
+\bottomrule
+\end{tabular}
+\caption{Round 5a results (20 matched pairs). Clean descriptions are consistently longer, giving length-only a misleading advantage. TF-IDF collapses when vocabulary is matched.}
+\label{tab:round5a}
+\end{table}
+
+\textbf{Important caveat:} These 20 pairs have two confounds I didn't fully control for. First, clean descriptions average 273 characters vs.\ 214 for poisoned --- a 22\% length gap that a length-only classifier exploits at 92.5\%. Second, 19/20 clean descriptions include reassurance language (``does not,'' ``read-only'') while 14/20 poisoned use additive framing (``also,'' ``automatically''). So the probe's 97.5\% on this subset likely reflects length and pragmatic framing, not just deep intent detection. The 100-pair experiment (Round 5b) partially addresses both --- length-only drops to 76\%, and length-residualized probe accuracy stays at 97\%. See Section~\ref{sec:limitations} for the full discussion of these artifacts.
+
+\subsection{Round 5b: Scaling up with harder tests (100 pairs)}
+
+20 pairs was too few to be sure. I scaled to 100 pairs across 8 categories, generated across four models (Claude Opus, Claude Sonnet, Codex, Gemini) to avoid single-source bias, and added tougher baselines:
+
+TF-IDF recovered to 79.5\% because the extra 80 pairs weren't as tightly matched as the original 20. That's actually good --- it makes the test fairer and more realistic.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lrl@{}}
+\toprule
+Method & Accuracy & What it means \\
+\midrule
+Length only & 76.0\% & There's some length difference between safe and malicious \\
+TF-IDF & 79.5\% & Vocabulary patterns help a bit \\
+\textbf{Sentence-BERT} & \textbf{72.5\%} & \textbf{Even semantic text analysis can't do it} \\
+SBERT + length & 80.0\% & Most of BERT's ``score'' was just measuring text length \\
+\textbf{Activation probe (Layer 3)} & \textbf{98.5\%} & \textbf{Model internals catch what text can't} \\
+Activation probe (no length) & 97.0\% & Removing length only costs 1.5\% \\
+Random baseline & 50.1\% & Sanity check (200 permutation runs, $p=0.005$) \\
+\bottomrule
+\end{tabular}
+\caption{Round 5b results (100 matched pairs, 200 samples). The activation probe maintains a consistent 18-point gap over the best text method even after removing the effect of text length.}
+\label{tab:round5b}
+\end{table}
+
+The signal peaking at middle layers (Layer 3) and weakening toward the output (Layer 11) is consistent with the probe detecting a property encoded during text comprehension rather than something directly used for next-token prediction --- though this is speculative with only one model architecture.
+
+\textbf{Bottom line:} The best text method (TF-IDF, 79.5\%) has an 18-point gap below the activation probe (97.0\% after removing length). On 200 samples. Statistically significant. Approximate 95\% confidence intervals (Wilson): activation probe 97.0\% $\pm$ 2.4\%, TF-IDF 79.5\% $\pm$ 5.6\%.
+
+Across all five rounds, the activation probe stayed above 93\%. Text methods went from 93\% down to 72.5\% as I eliminated confounds one by one.
+
+\textbf{Critical caveat:} These results are in-distribution. When trained on one attack style and tested on another, the activation probe drops to 71--73\% --- \emph{below} the in-distribution TF-IDF baseline of 79.5\%. This means the probe's advantage is real but fragile: it excels when attack patterns resemble its training data, but does not yet generalize across novel attack styles. This is the central open problem this work identifies, and the primary motivation for exploring SAE-based features as a more generalizable alternative.
+
+\section{What I Don't Know Yet}
+\label{sec:limitations}
+
+I want to be upfront about the gaps because there are several.
+
+\textbf{The probe doesn't generalize well across attack styles.} When I trained on one style and tested on another, accuracy dropped to 71--73\%. About 30\% of what the probe learns is specific to the dataset, not universal. That's a real problem.
+
+\textbf{I don't know what the probe is actually detecting.} I have 768 numbers that distinguish safe from malicious, but I can't point to any of them and say ``this one means covert data access.'' They're unnamed. This is the whole reason I want to try SAE analysis --- to put names on the numbers.
+
+\textbf{There's a dataset construction artifact I partially tested.} Descriptions were generated using four models (Claude Opus, Claude Sonnet, Codex, Gemini) to reduce single-source bias. Despite this, clean descriptions tend to include boundary-setting language (``does not,'' ``read-only'') while poisoned descriptions use additive framing (``also,'' ``automatically'') --- likely a shared pattern across LLMs when generating ``safe-sounding'' vs.\ ``capability-expanding'' text. A reassurance/additive word counter alone scores 88.5\% on the 100-pair dataset --- so the probe is partly picking up this pragmatic pattern.
+
+I ran a partial control: 15 pairs where both sides use neutral, matter-of-fact language with no reassurance or additive words. TF-IDF dropped to 70\%. The activation probe dropped from 97\% to 86--93\% --- lower, but still a 16--23 point gap over TF-IDF. So the pragmatic pattern accounts for some of the signal, but not all of it. A larger controlled dataset would pin this down more precisely.
+
+\textbf{GPT-2 is tiny and old --- and has no concept of tool use.} 124M parameters from 2019. It doesn't know what MCP is or what a tool description means --- it just processes these as plain English text. The fact that even a model with no tool-use training encodes a detectable distinction is interesting. Whether the signal is stronger or weaker in larger models that actually process tool descriptions is genuinely unknown --- larger representations could make it easier (richer features) or harder (more distributed, less linearly separable). That's an empirical question for the fellowship.
+
+\textbf{All the data is synthetic.} Two MCP supply chain attacks have been confirmed in the wild as of March 2026: postmark-mcp (Sep 2025, npm package BCC'd emails to attacker) and SmartLoader/Oura Ring MCP clone (Feb 2026, deployed StealC infostealer). No confirmed case of pure description-level poisoning (malicious instructions hidden solely in tool metadata) has been documented, though the attack surface is well-established. My descriptions are my best guess at what description-level attacks would look like, but real attackers might be more creative.
+
+\textbf{All descriptions were LLM-generated, not human-written.} Using four different models reduces single-source bias, but all four are large language models --- they may share generation patterns that differ systematically from human-authored text. Real-world poisoned descriptions would be crafted by human attackers or purpose-built generation pipelines. Testing on hand-written poisoned descriptions from security researchers would be a stronger control.
+
+\textbf{I haven't tested adversarial robustness.} If an attacker knows the probe exists, they might craft descriptions to evade it. There's a theoretical tension --- the poison has to change the model's processing to work, and changing the processing is what the probe detects --- but I haven't validated this empirically.
+
+\section{What's Next}
+
+My experiments confirm the same principle from prior work (see Section 3) extends to MCP tool descriptions: model internals consistently outperform text methods by 18--25 points. But 768 unnamed numbers only tell me \emph{that} something's different, not \emph{what}.
+
+SAE features could answer the ``what.'' If they decompose \emph{intent} --- safe vs.\ malicious behavior --- as cleanly as RAGLens's Feature 22790 decomposes \emph{factual grounding}, we'd have both a detection tool and an explanation of what the model is picking up on.
+
+And I want to be clear about what I'm proposing: detection, not correction. \citet{basu2026interpretability} showed that probes detect model errors at 98.2\% AUROC, but SAE-based correction methods produced zero effect despite identifying 3,695 significant features. The model knows something is off but you can't force it to act on that knowledge. So the right design is: probe detects, external system acts. Flag it for a human. Don't try to fix the model from inside.
+
+The big question is whether SAE features can do what raw activations can't --- generalize across attack styles. Right now I'm stuck at 71--73\% cross-style with raw activations. If SAE features isolate a ``malicious intent'' concept the way RAGLens's Feature 22790 isolates ``fabricated content,'' cross-style generalization should improve because the feature fires on the concept, not the specific wording. That's the first experiment I'd run.
+
+I've done everything I can with public tools and open-source models. The next step needs access to Claude's internals, Anthropic's SAE tooling, and someone who actually knows interpretability to tell me when I'm doing it wrong. That's what the fellowship is for.
+
+\appendix
+\section{Proposed Research Directions}
+\label{app:future}
+
+The following outlines possible next steps that would require access to production model internals:
+
+\textbf{Reproduce on a production model.} Replicate the activation probe experiment on a model with native tool-use capabilities. The key question: does the 97\% result hold on a model that actually processes tool descriptions in MCP context?
+
+\textbf{SAE feature decomposition.} Apply SAE analysis to identify which features fire differentially on clean vs.\ poisoned descriptions, and test whether SAE features improve cross-style generalization beyond the 71--73\% raw activation baseline.
+
+\textbf{Adversarial robustness.} Can an attacker who knows the probe exists craft descriptions that evade it while preserving the poisoning payload?
+
+\section{Reproducibility}
+
+The main experiments (Rounds 1--5b) are reproducible from this repo:
+\begin{itemize}
+\item \textbf{Notebook:} \href{https://github.com/mcpware/claude-code-organizer/blob/main/research/reproduce-experiments.ipynb}{\texttt{research/reproduce-experiments.ipynb}} --- covers Experiments 1--5b end to end
+\item \textbf{Datasets:} \texttt{research/datasets/} (with README explaining each file)
+\item \textbf{Scanner benchmark:} \texttt{research/benchmark-mcptox.mjs}
+\item \textbf{Random seed:} 42 everywhere
+\item \textbf{Control experiments} (cross-style generalization, reassurance confound, neutral pairs) were run in separate sessions and are documented in the report but not yet integrated into the notebook. The control datasets are included in \texttt{research/datasets/}.
+\end{itemize}
+
+I used Claude Code to accelerate the implementation. The research questions, experiment design, and what I make of the results are mine.
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\end{document}

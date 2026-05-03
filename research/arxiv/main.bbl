@@ -1,0 +1,58 @@
+\begin{thebibliography}{9}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Abdelnabi et~al.(2024)]{abdelnabi2024drift}
+S.~Abdelnabi et~al.
+\newblock Get my drift? catching {LLM} task drift with activation deltas.
+\newblock \emph{arXiv preprint arXiv:2406.00799}, 2024.
+
+\bibitem[{Anonymous}(2025)]{falsesense2025}
+{Anonymous}.
+\newblock False sense of security.
+\newblock \emph{arXiv preprint arXiv:2509.03888}, 2025.
+
+\bibitem[Basu et~al.(2026)]{basu2026interpretability}
+S.~Basu et~al.
+\newblock Interpretability without actionability.
+\newblock \emph{arXiv preprint arXiv:2603.18353}, 2026.
+
+\bibitem[Hapke and Cardozo(2026)]{hapke2026kiji}
+H.~Hapke and D.~Cardozo.
+\newblock Opening the black box: Mechanistic interpretability for {AI} agent
+  tool selection using sparse autoencoders.
+\newblock \emph{Dataiku/Kiji Inspector}, 2026.
+
+\bibitem[Nanda et~al.(2022)]{nanda2022transformerlens}
+N.~Nanda et~al.
+\newblock {TransformerLens}.
+\newblock GitHub, 2022.
+\newblock Developed during Nanda's work at Anthropic on mechanistic
+  interpretability.
+
+\bibitem[Reimers and Gurevych(2019)]{reimers2019sentencebert}
+N.~Reimers and I.~Gurevych.
+\newblock Sentence-{BERT}: Sentence embeddings using siamese {BERT}-networks.
+\newblock In \emph{EMNLP}, 2019.
+
+\bibitem[Wang et~al.(2025)]{wang2025mindguard}
+Z.~Wang et~al.
+\newblock {MindGuard}.
+\newblock \emph{arXiv preprint arXiv:2508.20412}, 2025.
+
+\bibitem[Wang et~al.(2026)]{wang2025mcptox}
+Z.~Wang et~al.
+\newblock {MCPTox}.
+\newblock In \emph{AAAI}, 2026.
+\newblock arXiv:2508.14925.
+
+\bibitem[Xiong et~al.(2026)]{xiong2026raglens}
+Y.~Xiong et~al.
+\newblock Toward faithful {RAG} with sparse autoencoders.
+\newblock In \emph{ICLR}, 2026.
+\newblock arXiv:2512.08892.
+
+\end{thebibliography}
