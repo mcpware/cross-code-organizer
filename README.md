@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/mcpware-cross-code-organizer-badge.png)](https://mseep.ai/app/mcpware-cross-code-organizer)
+
 # Cross-Code Organizer (CCO)
 
 ### Formerly Claude Code Organizer — the first cross-harness config organizer for AI coding tools.
