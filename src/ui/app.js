@@ -4420,9 +4420,38 @@ function renderSecurityResults(scanData) {
       for (const f of deduped) {
         const bc = f.severity === "critical" ? "sec-critical" : f.severity === "high" ? "sec-high" : f.severity === "medium" ? "sec-medium" : "sec-low";
         const countLabel = f.count > 1 ? ` ×${f.count}` : "";
-        html += `<div class="sec-finding-row" data-sec-server="${esc(server)}" data-sec-scope="${esc(scopeId)}">`;
+        // Build fix prompt for "Fix with Claude →"
+        const fixPrompt = [
+          `CCO Security Scanner found an issue in MCP server "${server}":`,
+          ``,
+          `Finding: ${f.name} [${f.id}]`,
+          `Severity: ${f.severity}`,
+          `Category: ${f.category}`,
+          `Description: ${f.description}`,
+          `Matched text: ${f.matchedText}`,
+          `Context: ${f.context}`,
+          ``,
+          `Detected by: CCO built-in scanner (rule ${f.id})`,
+          `Server: ${server}`,
+          `Source: ${f.sourceName || ""}`,
+          ``,
+          `This may be a false positive — please evaluate whether this is a real security issue.`,
+          `If it is real, explain the risk and guide me through fixing it.`,
+          `If it is a false positive, explain why it's safe.`,
+        ].join("\n");
+        const promptAttr = esc(fixPrompt).replace(/"/g, "&quot;");
+
+        html += `<div class="sec-finding-item" data-sec-server="${esc(server)}" data-sec-scope="${esc(scopeId)}">`;
+        html += `<div class="sec-finding-header">`;
         html += `<span class="sec-badge ${bc}" style="font-size:9px;padding:0 4px">${esc(f.severity.charAt(0).toUpperCase())}</span>`;
         html += `<span class="sec-finding-label">${esc(f.name)}${countLabel}</span>`;
+        html += `<span class="sec-tag">${esc(f.id)}</span>`;
+        html += `</div>`;
+        if (f.description) {
+          html += `<div class="sec-finding-desc">${esc(f.description)}</div>`;
+        }
+        html += `<div class="sec-finding-fix sec-fix-clickable" data-fix-prompt="${promptAttr}" title="Click to copy prompt for Claude Code">`;
+        html += `💡 Fix with Claude <span class="sec-fix-action">→ Copy prompt</span></div>`;
         html += `</div>`;
       }
       html += `</div>`;
@@ -4474,6 +4503,28 @@ function renderSecurityResults(scanData) {
       if (items) {
         const hidden = items.classList.toggle("hidden");
         btn.textContent = hidden ? "▸" : "▾";
+      }
+    });
+  });
+
+  // "Fix with Claude →" click → copy prompt to clipboard
+  results.querySelectorAll(".sec-fix-clickable").forEach(el => {
+    el.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const prompt = el.dataset.fixPrompt;
+      if (!prompt) return;
+      try {
+        await navigator.clipboard.writeText(prompt);
+        toast("Prompt copied — paste in Claude Code");
+      } catch {
+        const ta = document.createElement("textarea");
+        ta.value = prompt;
+        ta.style.cssText = "position:fixed;opacity:0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        toast("Prompt copied — paste in Claude Code");
       }
     });
   });

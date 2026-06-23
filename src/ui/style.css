@@ -1714,18 +1714,48 @@ body {
 .sec-row-name { flex: 1; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .sec-findings-list { padding-left: 20px; }
+
+/* Finding item card */
+.sec-finding-item {
+  padding: 6px 10px; border-radius: var(--radius); cursor: pointer;
+  transition: background 100ms; font-size: 11px;
+  border-left: 2px solid transparent; margin-bottom: 2px;
+}
+.sec-finding-item:hover { background: var(--bg2); border-left-color: var(--accent); }
+.sec-finding-header { display: flex; align-items: center; gap: 6px; }
+.sec-finding-label { color: var(--fg1); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.sec-tag {
+  font-size: 9px; padding: 2px 6px; border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1); color: rgba(255, 255, 255, 0.7);
+  font-family: monospace; white-space: nowrap; margin-left: auto; flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+.sec-finding-desc {
+  font-size: 11px; color: var(--fg1); line-height: 1.4;
+  margin: 3px 0 0 22px; opacity: 0.9;
+}
+.sec-finding-fix {
+  font-size: 11px; color: var(--accent); line-height: 1.4;
+  margin: 3px 0 0 22px;
+}
+.sec-fix-clickable {
+  cursor: pointer; border-radius: 4px; padding: 2px 6px; margin-left: 18px;
+  transition: background 150ms;
+}
+.sec-fix-clickable:hover { background: rgba(99, 179, 237, 0.1); }
+.sec-fix-action {
+  font-size: 10px; font-weight: 600; opacity: 0; transition: opacity 150ms;
+  margin-left: 6px;
+}
+.sec-fix-clickable:hover .sec-fix-action { opacity: 1; }
+
+/* Legacy row style (keep for backward compat) */
 .sec-finding-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 8px;
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: background 100ms;
-  font-size: 11px;
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 8px; border-radius: var(--radius);
+  cursor: pointer; transition: background 100ms; font-size: 11px;
 }
 .sec-finding-row:hover { background: var(--bg2); }
-.sec-finding-label { color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── Footer ── */
 .security-footer {
