@@ -1,7 +1,7 @@
 ---
 name: organize
 description: Open the Cross-Code Organizer (CCO) dashboard — view and manage all memories, skills, MCP servers, hooks, and configs across scopes
-argument-hint: [--port <number>]
+argument-hint: "[--port <number>]"
 allowed-tools: [Bash, Read]
 ---
 
