@@ -48,7 +48,7 @@ multidict==6.7.1
 multiprocess==0.70.19
 narwhals==2.21.2
 networkx==3.4.2
-nltk==3.9.4
+nltk==3.10.3
 numpy==2.2.6
 packaging==26.2
 pandas==2.3.3
