@@ -25,7 +25,7 @@ filelock==3.29.0
 frozenlist==1.8.0
 fsspec==2026.2.0
 gitdb==4.0.12
-GitPython==3.1.50
+GitPython==3.1.59
 graze==0.1.42
 h11==0.16.0
 hf-xet==1.5.0
