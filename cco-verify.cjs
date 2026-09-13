@@ -1,0 +1,20 @@
+const { chromium } = require('playwright');
+(async () => {
+  const b = await chromium.launch({ headless: true });
+  const p = await b.newPage();
+  p.on('console', msg => { if (msg.type() === 'error') console.log('CONSOLE ERROR:', msg.text()); });
+  p.on('pageerror', err => console.log('PAGE ERROR:', err.message));
+  await p.setViewportSize({ width: 1400, height: 900 });
+  await p.goto('http://localhost:3847', { waitUntil: 'domcontentloaded' });
+  await p.waitForTimeout(4000);
+  const hdr = await p.$('.s-scope-hdr[data-scope-id="-home-nicole-CompanyRepo-ai-security-control-plane"]');
+  if (hdr) await hdr.click();
+  await p.waitForTimeout(500);
+  await p.click('#inheritToggleBtn');
+  await p.waitForTimeout(1000);
+  const count = await p.evaluate(() => document.querySelectorAll('.item').length);
+  const badges = await p.evaluate(() => document.querySelectorAll('.scope-tag').length);
+  console.log(`Items: ${count}, Scope badges: ${badges}`);
+  console.log(count > 60 && badges > 0 ? 'PASS' : 'FAIL');
+  await b.close();
+})();
