@@ -75,7 +75,7 @@
   },
   "dependencies": {
     "@iarna/toml": "^2.2.5",
-    "@modelcontextprotocol/sdk": "^1.30.0"
+    "@modelcontextprotocol/sdk": "^1.31.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0"
