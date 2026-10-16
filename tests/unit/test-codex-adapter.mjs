@@ -11,6 +11,10 @@ async function createCodexHome() {
   const home = await mkdtemp(join(tmpdir(), 'cco-codex-adapter-'));
   const codexDir = join(home, '.codex');
 
+  // Keep project-root discovery inside this fixture. Shared CI/dev machines may
+  // have unrelated `.git` or `.codex` directories higher up under the OS temp
+  // directory, which must not leak into this global-inventory test.
+  await mkdir(join(home, '.git'), { recursive: true });
   await mkdir(join(codexDir, 'memories'), { recursive: true });
   await mkdir(join(codexDir, 'memories', 'rollout_summaries'), { recursive: true });
   await mkdir(join(codexDir, 'skills', 'demo-skill'), { recursive: true });
