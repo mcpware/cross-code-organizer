@@ -54,7 +54,13 @@ describe("OpenCode adapter", () => {
   it("scans global, project, and compatibility sources without enabling destructive operations", async () => {
     const env = await fixture();
     try {
-      const result = await scanHarness(opencodeAdapter, { home: env.home, cwd: env.nestedDir });
+      const result = await scanHarness(opencodeAdapter, {
+        home: env.home,
+        cwd: env.nestedDir,
+        // Keep the fixture deterministic on runners that define a host-level
+        // XDG_CONFIG_HOME. OpenCode correctly gives that variable precedence.
+        env: { ...process.env, XDG_CONFIG_HOME: join(env.home, ".config") },
+      });
       const project = result.scopes.find(scope => scope.repoDir === env.projectDir);
 
       assert.ok(project);
