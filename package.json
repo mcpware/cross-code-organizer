@@ -75,12 +75,12 @@
   },
   "dependencies": {
     "@iarna/toml": "^2.2.5",
-    "@modelcontextprotocol/sdk": "^1.30.0"
+    "@modelcontextprotocol/sdk": "^1.32.1"
   },
   "devDependencies": {
-    "@playwright/test": "^1.63.0"
+    "@playwright/test": "^1.64.1"
   },
   "optionalDependencies": {
-    "ai-tokenizer": "^1.0.6"
+    "ai-tokenizer": "^1.0.7"
   }
 }
