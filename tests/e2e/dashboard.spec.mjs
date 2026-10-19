@@ -3889,6 +3889,35 @@ test.describe('Harness Doctor control plane', () => {
     expect(report.contextMap.nodes.some(node => node.relation === 'direct')).toBe(true);
   });
 
+  test('runtime doctor API is read-only and privacy bounded', async () => {
+    const response = await fetch(`${env.baseURL}/api/runtime-doctor`);
+    expect(response.status).toBe(200);
+    const report = await response.json();
+    expect(report.ok).toBe(true);
+    expect(typeof report.detected).toBe('boolean');
+    expect(Array.isArray(report.topology.sessions)).toBe(true);
+    expect(Array.isArray(report.topology.duplicateDirectMcps)).toBe(true);
+    expect(Array.isArray(report.topology.sharedRuntimes)).toBe(true);
+    if (report.detected) {
+      expect(report.methodology.readOnly).toBe(true);
+      expect(report.methodology.secretValuesReturned).toBe(false);
+      expect(report.exposure.commandLineSecretProcesses).toBeGreaterThanOrEqual(0);
+    }
+    expect(JSON.stringify(report)).not.toContain('api-token=');
+  });
+
+  test('runtime stop rejects a stale process identity without signalling anything', async () => {
+    const response = await fetch(`${env.baseURL}/api/runtime/session/stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: env.baseURL },
+      body: JSON.stringify({ sessionId: 'codex:999999:stale', confirmation: 'codex:999999:stale' }),
+    });
+    expect(response.status).toBe(409);
+    const result = await response.json();
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(process.platform === 'linux' ? /ended or changed identity/ : /Linux only/);
+  });
+
   test('Harness Doctor modal renders score, context, migration, and privacy controls', async ({ page }) => {
     const errors = [];
     page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
@@ -3898,6 +3927,10 @@ test.describe('Harness Doctor control plane', () => {
     await expect(page.locator('.doctor-score-value')).toContainText('Grade');
     await expect(page.locator('#doctorContextMap .doctor-map-node').first()).toBeVisible();
     await expect(page.locator('#doctorContextMap .doctor-map-node[data-relation="direct"]')).toHaveCount(1);
+    await expect(page.locator('#doctorRuntime')).toBeVisible();
+    await expect(page.locator('#doctorRuntime')).toContainText(/Live agent sessions/);
+    await expect(page.locator('#doctorRuntime')).toContainText(/1MCP is not running|enabled servers/);
+    await expect(page.locator('#doctorRuntime')).toContainText(/IntentProbe runtime security/);
     await expect(page.locator('#doctorMigrationTarget option')).toHaveCount(3);
     await expect(page.locator('#doctorMigrationTarget option[value="dsh"]')).toHaveCount(1);
     await expect(page.locator('#doctorMetricsEnabled')).not.toBeChecked();
@@ -3906,6 +3939,18 @@ test.describe('Harness Doctor control plane', () => {
     await page.locator('#doctorClose').click();
     await page.locator('.s-scope-hdr[data-scope-id="global"] .s-nm').click();
     await expect(page.locator('#doctorBadge')).toHaveClass(/hidden/);
+  });
+
+  test('runtime inspection failure does not hide a successful control-plane audit', async ({ page }) => {
+    await page.route('**/api/runtime-doctor**', route => route.fulfill({
+      status: 500,
+      contentType: 'application/json',
+      body: JSON.stringify({ ok: false, error: 'fixture failure' }),
+    }));
+    await page.goto(env.baseURL);
+    await page.locator('#doctorBtn').click();
+    await expect(page.locator('#doctorOverview')).toContainText('Grade');
+    await expect(page.locator('#doctorRuntime')).toContainText('Runtime inspection failed');
   });
 
   test('copy-only skill migration previews, applies, and undoes', async () => {

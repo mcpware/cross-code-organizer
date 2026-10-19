@@ -31,6 +31,9 @@ You can disable metrics at any time in Harness Doctor. CCO does not use cookies,
 ## What It Accesses
 
 - Reads selected config and customization files for supported harnesses, including `~/.claude/`, `$CODEX_HOME` (default `~/.codex/`), `~/.config/opencode/`, `$DSH_HOME` (default `~/.dsh/`), `$DSH_AGENTS_HOME` (default `~/.agents/`), and discovered project directories
+- On Linux, Live Runtime Map reads same-user procfs metadata to group supported harness process trees and sum RSS, threads, age, and process counts. It may read same-user file-descriptor links plus `/proc/net/tcp*` to associate a persistent loopback 1MCP socket with a session. It reads configured MCP command markers only for local process matching. Command lines, working directories, raw socket details, and credential values are never returned to the browser.
+- Runtime Doctor can also read a HOME-scoped 1MCP config, cgroup resource counters, its loopback health endpoint, and Claude settings to detect an IntentProbe hook. It checks command-line arguments in memory for credential-shaped values but returns only a count.
+- “Stop session” is the only runtime-map mutation. After an explicit browser confirmation, CCO revalidates the same-user PID, process start identity, and supported harness executable, then sends `SIGTERM` to that one harness root. It never stops a session tree containing the CCO server itself.
 - Writes only when you use an editing, move, delete, restore, export, backup, or harness-control action
 - Runs an HTTP server bound to `127.0.0.1` (default port 3847) and rejects non-local browser requests
 
@@ -49,4 +52,4 @@ CCO does not upload the contents of your harness files. Optional monthly metrics
 
 ---
 
-Last updated: 2026-09-11
+Last updated: 2026-10-16
