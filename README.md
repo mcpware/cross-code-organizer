@@ -112,6 +112,10 @@ Open **Harness Doctor** from the sidebar for a scope-level audit:
 - **Explainable hygiene score** — every deduction is tied to a visible finding such as duplicate identities, missing discovery metadata, large context-bearing files, stale sessions, or setting overrides. It is a diagnostic heuristic, not a security certification.
 - **Safe auto-repair** — only byte-identical artifacts with the same name, category, and scope are eligible. CCO archives the extra copy, fingerprints it, and provides Undo.
 - **Cross-harness migration** — v1 copies portable `SKILL.md` bundles between Claude Code, Codex CLI, OpenCode, and DSH. It previews ready, conflicting, identical, and unsupported items and never overwrites by default.
+- **Live Runtime Map** — on Linux, groups same-user Claude Code, Codex, OpenCode, and DSH process trees into live sessions; shows tree RSS, age, process/thread counts, matched direct MCPs, duplicate per-session MCP instances, and a shared 1MCP node. A loopback TCP snapshot can link persistent 1MCP clients to sessions; short-lived requests are explicitly reported as unobservable rather than guessed.
+- **Runtime safety controls** — high-memory and 24-hour sessions are flagged. “Stop session” is always an explicit confirmation and revalidates the same-user PID, process start identity, and harness executable before sending graceful `SIGTERM`. CCO refuses to stop the process tree that contains itself.
+- **IntentProbe readiness** — detects whether the runtime scanner, warm JSONL daemon, and Claude hook are present. Semantic “what is this session doing?” activity remains unavailable until a future receipt adapter is connected; process names are never presented as intent evidence.
+- **1MCP Doctor** — checks cgroup memory/task pressure, unhealthy upstreams, floating `npx` versions, lazy-loading state, and credential-shaped command-line arguments. Command lines and credential values are never returned to the browser.
 - **Private product signals** — optional metrics are off by default. Detailed daily event counts and coarse inventory buckets stay local. If enabled, CCO submits a deduplicated monthly activity signal containing only a rotating anonymous ID, UTC month, CCO version, and harness ID. The identifier changes every month, so it cannot build cross-month user histories.
 
 ## Context Budget: See How Many Tokens Claude Code Pre-Loads
@@ -400,6 +404,12 @@ MIT
 [![cross-code-organizer MCP server](https://glama.ai/mcp/servers/mcpware/cross-code-organizer/badges/card.svg)](https://glama.ai/mcp/servers/mcpware/cross-code-organizer)
 
 ## Updates
+
+### Unreleased
+- Added a Linux Live Runtime Map for Claude Code, Codex, OpenCode, and DSH sessions, including tree RSS, age, process/thread counts, direct MCP attribution, duplicate per-session MCP detection, and persistent 1MCP client-socket evidence
+- Added explicit, identity-pinned graceful session stop; CCO revalidates UID, PID start time, and harness identity and refuses to stop its own containing process tree
+- Added IntentProbe runtime readiness plus 1MCP cgroup, package-pinning, lazy-loading, upstream-health, and credential-exposure diagnostics
+- Added privacy documentation and regression coverage; 405 tests pass (188 unit + 217 E2E)
 
 ### 2026-09-11
 - v0.20.0: Added inventory-first OpenCode and DeepSeek Harness support and expanded Codex inventory, including custom agents, nested memories, skill enablement state, project/inline/plugin hooks, plugin-provided skills, and standalone profiles

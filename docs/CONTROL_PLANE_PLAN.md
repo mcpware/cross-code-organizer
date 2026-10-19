@@ -1,5 +1,10 @@
 # Harness Doctor control-plane plan
 
+> **Historical v0.20 slice.** This document records the original Harness Doctor
+> contract. It no longer controls the product backlog. The canonical overall
+> roadmap is [LIVING_PLAN.md](LIVING_PLAN.md), and its release/feature evidence
+> gates are in [QA_PLAN.md](QA_PLAN.md).
+
 ## Outcome
 
 CCO should answer four questions for any supported coding harness:

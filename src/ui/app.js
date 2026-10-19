@@ -4951,7 +4951,16 @@ function doctorFormatBytes(bytes) {
   const value = Number(bytes || 0);
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KiB`;
-  return `${(value / (1024 * 1024)).toFixed(1)} MiB`;
+  if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MiB`;
+  return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GiB`;
+}
+
+function doctorFormatAge(seconds) {
+  if (seconds === null || seconds === undefined) return "age unavailable";
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+  return `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h`;
 }
 
 function closeHarnessDoctor() {
@@ -5055,6 +5064,130 @@ function renderDoctorFindings(report) {
     </div>`).join("");
 }
 
+function renderRuntimeDoctor(report) {
+  const el = document.getElementById("doctorRuntime");
+  const topology = report?.topology || {};
+  const sessions = [...(topology.sessions || [])].sort((a, b) => Number(b.memoryBytes || 0) - Number(a.memoryBytes || 0));
+  const duplicates = topology.duplicateDirectMcps || [];
+  const sharedRuntimes = topology.sharedRuntimes || [];
+  const intentProbe = report?.intentProbe || {};
+  const runtime = report.runtime || {};
+  const inventory = report.inventory || {};
+  const resources = report.resources || {};
+  const features = report.features || {};
+  const maxSessionMemory = Math.max(1, ...sessions.map(session => Number(session.memoryBytes || 0)));
+  const featureFlags = [
+    ["Async loading", features.asyncLoading],
+    ["Lazy loading", features.lazyLoading],
+    ["Config reload", features.configReload],
+    ["Session persistence", features.sessionPersistence],
+  ];
+  const findings = report.findings || [];
+  const sessionCards = sessions.length ? sessions.map(session => `
+    <article class="runtime-session-card" data-state="${esc(session.state)}">
+      <div class="runtime-session-head">
+        <div><b>${esc(session.label)}</b><span>${esc(session.state)} · PID ${Number(session.pid)}</span></div>
+        <strong>${doctorFormatBytes(session.memoryBytes)}</strong>
+      </div>
+      <div class="runtime-memory-bar"><i style="width:${Math.max(2, Math.round((Number(session.memoryBytes || 0) / maxSessionMemory) * 100))}%"></i></div>
+      <div class="runtime-session-meta">${session.processCount} processes · ${session.threadCount} threads · ${doctorFormatAge(session.ageSeconds)}</div>
+      <div class="runtime-mcp-list">
+        ${(session.mcpServers || []).length ? session.mcpServers.map(server => `
+          <span class="runtime-mcp-chip" data-policy="${esc(server.policy)}" title="${esc(server.reason)}">
+            ${esc(server.name)} <small>${server.instanceCount > 1 ? `${server.instanceCount}× · ` : ""}${doctorFormatBytes(server.memoryBytes)}</small>
+          </span>`).join("") : `<span class="runtime-none">No configured direct MCP process matched</span>`}
+      </div>
+      <div class="runtime-session-actions">
+        <div>${(session.attention || []).map(flag => `<span class="runtime-attention" data-flag="${esc(flag)}">${flag === "high-memory" ? "high memory" : "long-lived"}</span>`).join("")}</div>
+        <button class="d-btn runtime-stop-btn" type="button" data-session-id="${esc(session.id)}" data-session-label="${esc(session.label)}"${session.controllable ? "" : " disabled title=\"CCO is running inside this session\""}>Stop session</button>
+      </div>
+    </article>`).join("") : `<div class="doctor-empty">No running Claude Code, Codex, OpenCode, or DeepSeek Harness sessions were detected.</div>`;
+
+  const sharedCards = sharedRuntimes.length ? sharedRuntimes.map(shared => `
+    <article class="runtime-shared-card">
+      <div class="runtime-session-head">
+        <div><b>${esc(shared.name)}</b><span>shared runtime · ${shared.serverCount} servers</span></div>
+        <strong>${shared.memoryBytes === null ? "—" : doctorFormatBytes(shared.memoryBytes)}</strong>
+      </div>
+      <div class="runtime-shared-links">
+        ${(shared.connectedSessions || []).length
+          ? shared.connectedSessions.map(session => `<span>↳ ${esc(session.label)}</span>`).join("")
+          : `<span>${shared.connectionEvidence === "tcp-snapshot" ? "No persistent client socket visible in this snapshot" : "Per-client connection evidence unavailable"}</span>`}
+      </div>
+      <div class="runtime-mcp-list">
+        ${(shared.servers || []).map(server => `<span class="runtime-mcp-chip" data-policy="${esc(server.policy)}" title="${esc(server.reason)}">${esc(server.name)} <small>${esc(server.policy)}</small></span>`).join("")}
+      </div>
+    </article>`).join("") : `<div class="doctor-empty">1MCP is not running. Direct session processes are still mapped above.</div>`;
+
+  const duplicateHtml = duplicates.length ? `
+    <div class="runtime-duplicate-list">
+      ${duplicates.map(item => `<div class="runtime-duplicate-row">
+        <div><b>${esc(item.name)}</b><span>${item.sessions.length} sessions · ${item.instanceCount} instances · ${doctorFormatBytes(item.memoryBytes)}</span></div>
+        <span class="runtime-policy" data-policy="${esc(item.policy)}">${esc(item.policy)}</span>
+      </div>`).join("")}
+    </div>` : `<div class="doctor-empty">No configured direct MCP was matched in more than one live session.</div>`;
+
+  el.innerHTML = `
+    <div class="runtime-map-heading">
+      <div><b>Live agent sessions</b><span>${sessions.length} detected · one privacy-bounded OS snapshot</span></div>
+      <div class="runtime-legend"><span data-policy="shared-candidate">share candidate</span><span data-policy="review">review</span><span data-policy="isolate">isolate</span></div>
+    </div>
+    <div class="runtime-session-grid">${sessionCards}</div>
+    <div class="runtime-subheading"><b>Duplicate direct MCPs</b><span>Same configured server running once per session</span></div>
+    ${duplicateHtml}
+    <div class="runtime-subheading"><b>Shared runtime</b><span>1MCP process group and live client evidence</span></div>
+    <div class="runtime-shared-grid">${sharedCards}</div>
+    <div class="runtime-intent-row">
+      <div><b>IntentProbe runtime security</b><span>Tool definitions, inputs, and responses at event boundaries</span></div>
+      <div class="runtime-intent-flags">
+        <span data-enabled="${intentProbe.installed ? "true" : "false"}">installed ${intentProbe.installed ? "yes" : "no"}</span>
+        <span data-enabled="${intentProbe.daemonRunning ? "true" : "false"}">warm daemon ${intentProbe.daemonRunning ? "on" : "off"}</span>
+        <span data-enabled="${intentProbe.hookConfigured ? "true" : "false"}">hook ${intentProbe.hookConfigured ? "configured" : "not configured"}</span>
+        <span data-enabled="false">receipts ${esc(intentProbe.receiptIngestion || "not-connected")}</span>
+      </div>
+    </div>
+    ${report.detected ? `<div class="doctor-runtime-head">
+      <div><b>${esc(runtime.name || "Shared MCP")}${runtime.version ? ` ${esc(runtime.version)}` : ""}</b><span class="doctor-runtime-status" data-status="${esc(runtime.status || "running")}">${esc(runtime.status || "running")}</span></div>
+      <span>${esc(runtime.host || "loopback")}:${Number(runtime.port || 0)}</span>
+    </div>
+    <div class="doctor-runtime-grid">
+      <div class="doctor-stat"><b>${inventory.enabledCount ?? 0}</b><span>enabled servers</span></div>
+      <div class="doctor-stat"><b>${resources.processCount ?? "—"}</b><span>runtime processes</span></div>
+      <div class="doctor-stat"><b>${resources.memoryBytes === null ? "—" : doctorFormatBytes(resources.memoryBytes)}</b><span>cgroup memory</span></div>
+      <div class="doctor-stat"><b>${resources.taskCount ?? "—"}${resources.taskMax ? ` / ${resources.taskMax}` : ""}</b><span>tasks</span></div>
+    </div>
+    <div class="doctor-runtime-flags">${featureFlags.map(([label, enabled]) => `<span data-enabled="${enabled ? "true" : "false"}">${esc(label)} ${enabled ? "on" : "off"}</span>`).join("")}</div>` : ""}
+    <div class="doctor-runtime-findings">
+      ${findings.length ? findings.map(finding => `
+        <div class="doctor-finding">
+          <div class="doctor-finding-head">
+            <span class="doctor-severity" data-severity="${esc(finding.severity)}"></span>
+            <b>${esc(finding.title)}</b>
+          </div>
+          <p>${esc(finding.detail)}</p>
+        </div>`).join("") : `<div class="doctor-empty">No runtime pressure or exposure findings.</div>`}
+    </div>
+    <div class="doctor-map-note">The map is read-only until you explicitly confirm “Stop session”. Stop sends SIGTERM only after CCO rechecks PID, start time, same-user ownership, and harness identity. RSS is summed without double-counting nested sessions. Command lines and credential values are never returned. “What this session is doing” stays unavailable until IntentProbe receipts are connected.</div>`;
+
+  el.querySelectorAll(".runtime-stop-btn").forEach(button => button.addEventListener("click", async () => {
+    const sessionId = button.dataset.sessionId;
+    const label = button.dataset.sessionLabel || "this session";
+    if (!sessionId || !confirm(`Stop ${label}?\n\nCCO will recheck the process identity, then send SIGTERM so the harness can shut down gracefully.`)) return;
+    button.disabled = true;
+    const result = await fetchJson(apiUrl("/api/runtime/session/stop"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, confirmation: sessionId }),
+    });
+    if (!result.ok) {
+      button.disabled = false;
+      return toast(result.error || "Session could not be stopped", true);
+    }
+    toast(result.message || "Stop signal sent");
+    setTimeout(() => loadHarnessDoctor(), 800);
+  }));
+}
+
 function renderDoctorPrivacy(status) {
   const checkbox = document.getElementById("doctorMetricsEnabled");
   const label = document.getElementById("doctorMetricsLabel");
@@ -5073,6 +5206,7 @@ async function loadHarnessDoctor() {
   document.getElementById("doctorOverview").innerHTML = `<div class="doctor-loading">Auditing the selected scope…</div>`;
   document.getElementById("doctorContextMap").innerHTML = "";
   document.getElementById("doctorFindings").innerHTML = "";
+  document.getElementById("doctorRuntime").innerHTML = `<div class="doctor-loading">Checking for a local shared MCP runtime…</div>`;
   document.getElementById("doctorMigration").innerHTML = "";
 
   const targetSelect = document.getElementById("doctorMigrationTarget");
@@ -5080,20 +5214,29 @@ async function loadHarnessDoctor() {
   targetSelect.innerHTML = targets.map(harness => `<option value="${esc(harness.id)}">${esc(`${harness.icon || ""} ${harness.displayName}`.trim())}</option>`).join("");
   document.getElementById("doctorMigrationPreview").disabled = targets.length === 0;
 
+  const runtimePromise = fetchJson(apiUrl("/api/runtime-doctor"))
+    .then(runtime => {
+      if (!runtime?.ok) throw new Error(runtime?.error || "Runtime inspection failed");
+      renderRuntimeDoctor(runtime);
+    })
+    .catch(() => {
+      document.getElementById("doctorRuntime").innerHTML = `<div class="doctor-empty">Runtime inspection failed. No process was changed.</div>`;
+    });
+  const metricsPromise = fetchJson(apiUrl("/api/privacy-metrics"))
+    .then(metrics => { if (metrics.ok) renderDoctorPrivacy(metrics); })
+    .catch(() => {});
+
   try {
-    const [report, metrics] = await Promise.all([
-      fetchJson(apiUrl("/api/control-plane", { scope: selectedScopeId })),
-      fetchJson(apiUrl("/api/privacy-metrics")),
-    ]);
+    const report = await fetchJson(apiUrl("/api/control-plane", { scope: selectedScopeId }));
     if (!report.ok) throw new Error(report.error || "Audit failed");
     doctorReport = report;
     renderDoctorOverview(report);
     renderDoctorContextMap(report.contextMap);
     renderDoctorFindings(report);
-    if (metrics.ok) renderDoctorPrivacy(metrics);
   } catch (error) {
     document.getElementById("doctorOverview").innerHTML = `<div class="doctor-empty">${esc(error.message || "Audit failed")}</div>`;
   }
+  await Promise.all([runtimePromise, metricsPromise]);
 }
 
 async function applyDoctorRepair(actionId) {
