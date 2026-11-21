@@ -64,7 +64,7 @@
 ### HTTP server
 - Entry: `src/server.mjs`
 - Cross-platform path boundary checks: `src/path-security.mjs`
-- Search: `createServer`, `/api/scan`, `/api/move`, `/api/delete`, `/api/save-markdown`, `/api/context-budget`, `/api/security-scan`, `/api/file-content`, `/api/session-preview`, `/api/export`
+- Search: `createServer`, `/api/scan`, `/api/move`, `/api/delete`, `/api/save-markdown`, `/api/context-budget`, `/api/security-scan`, `/api/runtime-doctor`, `/api/file-content`, `/api/session-preview`, `/api/export`
 - Tests: `tests/e2e/dashboard.spec.mjs`
 - Connects to:
   - Scanner — inventory via `scanAll()`
@@ -117,6 +117,16 @@
   - Server startup and consent route — `src/server.mjs`
   - Harness Doctor consent UI — `src/ui/app.js`, `src/ui/index.html`
   - First-party Cloudflare Worker + D1 — deduplicates `(month, monthly_id)`
+
+### Live Runtime Map / MCP Runtime Doctor
+- Entry: `src/runtime-doctor.mjs`
+- Search: `collectRuntimeDoctorReport`, `stopRuntimeSession`, `buildSessions`, `attachDirectMcpProcesses`, `findConnectedSessions`, `collectIntentProbeStatus`, `buildRuntimeFindings`, `commandLineHasSecret`
+- Behavior: privacy-bounded Linux snapshot of same-user Claude Code, Codex, OpenCode, and DSH process trees; tree RSS/age/process attribution; configured direct-MCP matching; duplicate direct-instance summary; 1MCP cgroup health and persistent loopback client-socket attribution; IntentProbe install/daemon/hook readiness. Command lines, paths, raw sockets, and credential values are never returned.
+- Stop contract: explicit UI confirmation plus opaque PID/start-time identity; server revalidates same user and harness identity and sends only `SIGTERM`; CCO refuses self-containing trees.
+- Tests: `tests/unit/test-runtime-doctor.mjs`, `tests/e2e/dashboard.spec.mjs`
+- Connects to:
+  - Server — `GET /api/runtime-doctor`, `POST /api/runtime/session/stop` in `src/server.mjs`
+  - Harness Doctor — session cards, direct/shared topology, duplicate MCP recommendations, IntentProbe readiness, resource/package/credential findings, and stop confirmation in `src/ui/app.js`
 
 ---
 
@@ -175,6 +185,7 @@
 - `test-opencode-adapter.mjs` — OpenCode config, instruction, skill, MCP, and plugin discovery
 - `test-dsh-adapter.mjs` — DeepSeek Harness settings, profiles, official skill roots, and capability gates
 - `test-control-plane.mjs` — local privacy metrics and monthly signal behavior
+- `test-runtime-doctor.mjs` — privacy-bounded 1MCP process, cgroup, config, and finding collection
 - `test-metrics-worker.mjs` — collector validation, strict schema, and D1 writes
 
 ### E2E tests

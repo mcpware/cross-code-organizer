@@ -40,6 +40,7 @@ import {
 } from "./privacy-metrics.mjs";
 import { isNewerVersion } from "./version.mjs";
 import { isPathWithin, normalizedPath } from "./path-security.mjs";
+import { collectRuntimeDoctorReport, stopRuntimeSession } from "./runtime-doctor.mjs";
 
 // ── Update check ─────────────────────────────────────────────────────
 async function checkForUpdate() {
@@ -206,6 +207,20 @@ function getCachedData(harnessId = getDefaultAdapterId()) {
 
 function invalidateCachedData(harnessId = getDefaultAdapterId()) {
   cachedDataByHarness.delete(harnessId);
+}
+
+async function collectRuntimeMcpItems() {
+  const summaries = await listAdapters();
+  const inventories = await Promise.all(summaries.map(async ({ id }) => {
+    try {
+      const data = getCachedData(id) || await refreshScanCache(id);
+      return (data?.items || []).filter(item => item.category === "mcp");
+    } catch {
+      // One unavailable harness must not hide runtime evidence from the rest.
+      return [];
+    }
+  }));
+  return inventories.flat();
 }
 
 async function getHarnessOperations(harnessId = getDefaultAdapterId()) {
@@ -500,6 +515,24 @@ async function handleRequest(req, res) {
     const report = computeHygieneReport(cachedData, scopeId, { exactDuplicateRepairs: repairs });
     await recordPrivacyMetric(HOME, "doctor_open", activeAdapter.id, { inventoryCount: cachedData.items.length }).catch(() => {});
     return json(res, { ok: true, harness: cachedData.harness, ...report });
+  }
+
+  // GET /api/runtime-doctor — read-only shared MCP runtime health
+  if (path === "/api/runtime-doctor" && req.method === "GET") {
+    if (!cachedData) await freshScan();
+    return json(res, await collectRuntimeDoctorReport({
+      mcpItems: await collectRuntimeMcpItems(),
+    }));
+  }
+
+  // POST /api/runtime/session/stop — explicit, identity-pinned graceful stop
+  if (path === "/api/runtime/session/stop" && req.method === "POST") {
+    const { sessionId, confirmation } = await readBody(req);
+    if (!sessionId || confirmation !== sessionId) {
+      return json(res, { ok: false, error: "A fresh session identity confirmation is required" }, 400);
+    }
+    const result = await stopRuntimeSession(sessionId);
+    return json(res, result, result.ok ? 200 : 409);
   }
 
   // POST /api/control-plane/repair — archive one verified exact duplicate
