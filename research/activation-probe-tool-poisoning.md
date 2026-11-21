@@ -1,6 +1,6 @@
 # Can Model Internals Detect MCP Tool Poisoning That Text Analysis Cannot?
 
-**Author:** Nicole Leung | **Date:** March 29, 2026 | **Status:** Preliminary — this is my first research experiment
+**Author:** ithiria894 | **Date:** March 29, 2026 | **Status:** Preliminary — this is my first research experiment
 
 ---
 
